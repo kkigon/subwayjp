@@ -18,7 +18,96 @@ function stationDisplayName(key) {
    - 키는 "정렬된키A||정렬된키B", from은 points가 향하는 시작 역.
    - lines를 지정하면 그 노선이 포함된 구간에만 적용.
    ------------------------------------------------------------ */
-const ROUTE_VIA = {};
+const ROUTE_VIA = {
+  // 同じ乗換駅から別方向へ向かう路線が重なる区間を、短く平行移動させる。
+  "国会議事堂前||赤坂見附": { from: "赤坂見附", lines: ["M"], offset: -18 },
+  "永田町||麹町": { from: "永田町", lines: ["Y"], offset: -18 },
+  "三越前||水天宮前": { from: "三越前", lines: ["Z"], offset: -18 },
+  "大手町||竹橋": { from: "大手町", lines: ["T"], offset: -18 },
+  "内幸町||日比谷": { from: "日比谷", lines: ["I"], offset: 18 },
+  "大手町||日比谷": {
+    from: "大手町", lines: ["I"], points: [[1384, 872], [1256, 1016], [1256, 1088]]
+  },
+  "江戸川橋||飯田橋": { from: "飯田橋", lines: ["Y"], offset: 18 },
+  "九段下||市ケ谷": { from: "九段下", lines: ["S"], offset: -18 },
+  "四ツ谷||市ケ谷": { from: "市ケ谷", lines: ["N"], offset: -18 },
+  "三田||白金高輪": { from: "三田", lines: ["I"], offset: 18 },
+  "新宿三丁目||曙橋": { from: "新宿三丁目", lines: ["S"], offset: -18 },
+  "表参道||青山一丁目": { from: "表参道", lines: ["Z"], offset: 18 },
+  "日比谷||銀座": { from: "日比谷", lines: ["H"], offset: -18 },
+  "大手町||新御茶ノ水": { from: "大手町", lines: ["C"], offset: 18 },
+  "二重橋前〈丸の内〉||大手町": { from: "大手町", lines: ["C"], offset: 26 },
+  "二重橋前〈丸の内〉||日比谷": {
+    from: "日比谷", lines: ["C"], points: [[1280, 1060], [1344, 996]]
+  },
+  "有楽町||桜田門": { from: "桜田門", lines: ["Y"], offset: -18 },
+  "明治神宮前〈原宿〉||渋谷": { from: "渋谷", lines: ["F"], offset: -18 },
+  "内幸町||御成門": { from: "内幸町", lines: ["I"], offset: -18 },
+  "東池袋||池袋": { from: "池袋", lines: ["Y"], offset: 14 },
+  "春日||飯田橋": { from: "飯田橋", lines: ["E"], offset: 18 },
+
+  // 非乗換駅の点が他路線上に載る箇所では、駅を持たない側の線だけを避ける。
+  "根津||湯島": { from: "根津", lines: ["C"], offset: 18 },
+  "上野広小路||末広町": { from: "上野広小路", lines: ["G"], offset: -18 },
+  "上野御徒町||本郷三丁目": { from: "本郷三丁目", lines: ["E"], offset: -18 },
+  "京橋||銀座": { from: "銀座", lines: ["G"], offset: 18 },
+  "宝町||日本橋": { from: "日本橋", lines: ["A"], offset: -18 },
+  "人形町||日本橋": { from: "日本橋", lines: ["A"], offset: 18 },
+  "人形町||茅場町": { from: "人形町", lines: ["H"], offset: -18 },
+  "日本橋||茅場町": { from: "日本橋", lines: ["T"], offset: -18 },
+  "茅場町||門前仲町": { from: "茅場町", lines: ["T"], offset: 18 },
+  "新富町||銀座一丁目": { from: "銀座一丁目", lines: ["Y"], offset: 18 },
+  "小川町||岩本町": { from: "小川町", lines: ["S"], offset: -18 },
+  "宝町||東銀座": { from: "東銀座", lines: ["A"], offset: 18 },
+  "新橋||東銀座": { from: "東銀座", lines: ["A"], offset: -18 },
+  "東銀座||銀座": { from: "銀座", lines: ["H"], offset: 18 },
+  "後楽園||本郷三丁目": { from: "後楽園", lines: ["M"], offset: -18 },
+};
+
+function cross2d(a, b) {
+  return a[0] * b[1] - a[1] * b[0];
+}
+
+function offsetRoutePoints(points, offset) {
+  const clean = points.filter((p, i) =>
+    i === 0 || Math.hypot(p[0] - points[i - 1][0], p[1] - points[i - 1][1]) > 0.5
+  );
+  if (clean.length < 2) return clean;
+
+  const directions = clean.slice(1).map((point, i) => {
+    const dx = point[0] - clean[i][0], dy = point[1] - clean[i][1];
+    const length = Math.hypot(dx, dy) || 1;
+    return [dx / length, dy / length];
+  });
+  const normals = directions.map(([dx, dy]) => [-dy, dx]);
+  const last = clean.length - 1;
+  const entry = Math.abs(offset);
+  const result = [clean[0]];
+  result.push([
+    clean[0][0] + directions[0][0] * entry + normals[0][0] * offset,
+    clean[0][1] + directions[0][1] * entry + normals[0][1] * offset,
+  ]);
+
+  for (let i = 1; i < clean.length - 1; i++) {
+    const before = [clean[i][0] + normals[i - 1][0] * offset, clean[i][1] + normals[i - 1][1] * offset];
+    const after = [clean[i][0] + normals[i][0] * offset, clean[i][1] + normals[i][1] * offset];
+    const denominator = cross2d(directions[i - 1], directions[i]);
+    if (Math.abs(denominator) < 0.001) {
+      result.push([(before[0] + after[0]) / 2, (before[1] + after[1]) / 2]);
+    } else {
+      const delta = [after[0] - before[0], after[1] - before[1]];
+      const t = cross2d(delta, directions[i]) / denominator;
+      result.push([before[0] + directions[i - 1][0] * t, before[1] + directions[i - 1][1] * t]);
+    }
+  }
+
+  result.push([
+    clean[last][0] - directions.at(-1)[0] * entry + normals.at(-1)[0] * offset,
+    clean[last][1] - directions.at(-1)[1] * entry + normals.at(-1)[1] * offset,
+  ]);
+  result.push(clean[last]);
+  return result;
+}
 
 function octilinearBend(a, b) {
   const dx = b[0] - a[0], dy = b[1] - a[1];
@@ -201,6 +290,7 @@ function buildNetwork(lineIds, options = {}) {
         const k = [a, b].sort().join("||");
         if (!edgeMap.has(k)) {
           edgeMap.set(k, {
+            from: a, to: b,
             ax: sa.x, ay: sa.y, bx: sb.x, by: sb.y, lines: []
           });
         }
@@ -217,14 +307,23 @@ function buildNetwork(lineIds, options = {}) {
       lines: e.lines.slice().sort((x, y) => lineOrder.get(x) - lineOrder.get(y))
     };
     // 특정 구간은 곡선 우회 경로(via)를 부여해 다른 노선과 겹치지 않게 한다.
-    const route = ROUTE_VIA[k] || autoRouteVia.get(k);
+    const manualRoute = ROUTE_VIA[k];
+    const automaticRoute = autoRouteVia.get(k);
+    let route = manualRoute || automaticRoute;
+    if (manualRoute?.offset) {
+      const forward = manualRoute.from === out.from;
+      const start = forward ? [out.ax, out.ay] : [out.bx, out.by];
+      const end = forward ? [out.bx, out.by] : [out.ax, out.ay];
+      let automaticPoints = automaticRoute?.points?.map(point => [...point]) || [];
+      if (automaticRoute && automaticRoute.from !== manualRoute.from) automaticPoints.reverse();
+      const detour = offsetRoutePoints([start, ...automaticPoints, end], manualRoute.offset);
+      route = { ...manualRoute, points: detour.slice(1, -1) };
+    }
     if (route && options.regionLayout !== "nationwide") {
       // route.lines가 있으면 해당 노선이 이 구간에 포함될 때만 적용
       const applies = !route.lines || route.lines.some(id => out.lines.includes(id));
       if (applies) {
-        // via 좌표는 "대곡→연신내" 기준 방향. 정렬된 키 순서와 맞춰 뒤집기.
-        const [ka, kb] = k.split("||");
-        const forward = (route.from === ka); // route.from이 정렬상 앞이면 그대로
+        const forward = route.from === out.from;
         out.via = forward ? route.points.map(p => [...p])
                           : route.points.map(p => [...p]).reverse();
       }
