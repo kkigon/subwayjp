@@ -45,7 +45,9 @@ const EXTRA_ALIASES = {
 
 // 実際の緯度経度をそのまま縮尺すると都心部が密集し、路線が判別しにくい。
 // 乗換駅・終端・曲がり角だけを共有グリッド上に固定し、その間の駅は線形補間する。
-// 東京の東西南北関係を保ちながら、ゲーム画面用の独自オクトリニア路線図にする。
+// 東京の東西南北関係を保ちながら、ゲーム画面用の独自模式図にする。
+// 韓国版と同程度の駅間余白を確保するため、設計グリッドを広めに展開する。
+const SCHEMATIC_SCALE = 1.6;
 const SCHEMATIC_ANCHORS = {
   // 北西部（有楽町線・副都心線の共用区間）
   "和光市": [100, 100], "地下鉄成増": [140, 120], "地下鉄赤塚": [180, 140],
@@ -169,7 +171,12 @@ for (const [key, station] of meta) {
 for (const key of Object.keys(SCHEMATIC_ANCHORS)) {
   if (!meta.has(key)) throw new Error(`schematic anchor does not match a station: ${key}`);
 }
-const anchors = SCHEMATIC_ANCHORS;
+const anchors = Object.fromEntries(
+  Object.entries(SCHEMATIC_ANCHORS).map(([key, [x, y]]) => [
+    key,
+    [Math.round(x * SCHEMATIC_SCALE), Math.round(y * SCHEMATIC_SCALE)],
+  ])
+);
 
 const lines = fetched.map(({ spec, stations }) => ({
   id: spec.id,

@@ -802,6 +802,7 @@ function startStudy() {
   document.body.classList.add("studying");
 
   SubwayMap.hideFocus();
+  SubwayMap.fitStudy(true);
   // 선명해진 뒤 라벨 표시 + 자유 이동 켜기
   setTimeout(() => {
     SubwayMap.showAllLabels();

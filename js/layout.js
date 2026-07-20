@@ -2,7 +2,7 @@
    路線図レイアウト
    - 主要駅を共有グリッドに固定し、その間を補間
    - 同じキーの駅は全路線で同じ座標を共有
-   - 駅間は水平・垂直・45度の組み合わせで描画
+   - 主要駅間の中間駅は同じ直線上に配置
    ============================================================ */
 
 function stationDisplayName(key) {
@@ -19,18 +19,6 @@ function stationDisplayName(key) {
    - lines를 지정하면 그 노선이 포함된 구간에만 적용.
    ------------------------------------------------------------ */
 const ROUTE_VIA = {};
-
-// 2駅の位置関係が水平・垂直・45度でない場合、1つの折れ点を加えて
-// 必ずオクトリニア（0/45/90度）にする。駅座標自体は変えないため、
-// 乗換駅は全路線で完全に同じ位置を共有できる。
-function octilinearVia(ax, ay, bx, by) {
-  const dx = bx - ax, dy = by - ay;
-  const adx = Math.abs(dx), ady = Math.abs(dy);
-  if (adx < 0.5 || ady < 0.5 || Math.abs(adx - ady) < 0.5) return [];
-  const sx = Math.sign(dx), sy = Math.sign(dy);
-  if (adx > ady) return [[ax + sx * (adx - ady), ay]];
-  return [[ax, ay + sy * (ady - adx)]];
-}
 
 // 한 세그먼트(역 키 배열)의 좌표 배열 계산
 function layoutSegment(keys) {
@@ -53,7 +41,7 @@ function layoutSegment(keys) {
     const dx = (b[0] - a[0]) || 20, dy = (b[1] - a[1]) || 0;
     const len = Math.hypot(dx, dy) || 1;
     for (let i = 0; i < first; i++) {
-      const d = (first - i) * 24;
+      const d = (first - i) * 38;
       pts[i] = [a[0] - dx / len * d, a[1] - dy / len * d];
     }
   }
@@ -65,7 +53,7 @@ function layoutSegment(keys) {
     const dx = (a[0] - b[0]) || 20, dy = (a[1] - b[1]) || 0;
     const len = Math.hypot(dx, dy) || 1;
     for (let i = last + 1; i < keys.length; i++) {
-      const d = (i - last) * 24;
+      const d = (i - last) * 38;
       pts[i] = [a[0] + dx / len * d, a[1] + dy / len * d];
     }
   }
@@ -187,7 +175,6 @@ function buildNetwork(lineIds, options = {}) {
                           : route.points.map(p => [...p]).reverse();
       }
     }
-    if (!out.via) out.via = octilinearVia(out.ax, out.ay, out.bx, out.by);
     return out;
   });
 

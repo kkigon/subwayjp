@@ -273,6 +273,25 @@ const SubwayMap = (() => {
     instant ? jumpTo(target) : animateTo(target, 900);
   }
 
+  // 学習モードでは216駅を一画面に収めると駅名が小さくなりすぎる。
+  // 最初から文字を読める縮尺にして、残りの範囲はドラッグで探索できるようにする。
+  function fitStudy(instant = false) {
+    fitAll(true);
+    const a = aspect();
+    const targetWidth = Math.min(view.w, 1200 * Math.min(1, a));
+    if (targetWidth >= view.w) return;
+
+    const cx = view.x + view.w / 2;
+    const cy = view.y + view.h / 2;
+    const target = {
+      x: cx - targetWidth / 2,
+      y: cy - (targetWidth / a) / 2,
+      w: targetWidth,
+      h: targetWidth / a
+    };
+    instant ? jumpTo(target) : animateTo(target, 650);
+  }
+
   function jumpTo(t) {
     cancelAnimationFrame(animFrame);
     view = { ...t };
@@ -353,7 +372,7 @@ const SubwayMap = (() => {
   }
 
   return {
-    init, render, fitAll, focusStation, revealLabel, hideFocus, handleResize,
+    init, render, fitAll, fitStudy, focusStation, revealLabel, hideFocus, handleResize,
     setInteractive, showAllLabels, hideAllLabels
   };
 })();
