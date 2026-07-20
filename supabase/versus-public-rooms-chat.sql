@@ -7,31 +7,31 @@
 
 begin;
 
-alter table public.rooms add column if not exists room_title text not null default '東京メトロ対戦ルーム';
-alter table public.rooms add column if not exists is_public boolean not null default true;
-alter table public.rooms add column if not exists member_count integer not null default 1;
-alter table public.rooms add column if not exists last_active_at timestamptz not null default now();
+alter table public.jp_rooms add column if not exists room_title text not null default '東京メトロ対戦ルーム';
+alter table public.jp_rooms add column if not exists is_public boolean not null default true;
+alter table public.jp_rooms add column if not exists member_count integer not null default 1;
+alter table public.jp_rooms add column if not exists last_active_at timestamptz not null default now();
 
-alter table public.rooms drop constraint if exists rooms_title_length_check;
-alter table public.rooms add constraint rooms_title_length_check
+alter table public.jp_rooms drop constraint if exists jp_rooms_title_length_check;
+alter table public.jp_rooms add constraint jp_rooms_title_length_check
   check (char_length(room_title) between 2 and 30);
-alter table public.rooms drop constraint if exists rooms_member_count_check;
-alter table public.rooms add constraint rooms_member_count_check
+alter table public.jp_rooms drop constraint if exists jp_rooms_member_count_check;
+alter table public.jp_rooms add constraint jp_rooms_member_count_check
   check (member_count between 1 and 32);
 
-create index if not exists rooms_public_lobby_idx
-  on public.rooms (last_active_at desc)
+create index if not exists jp_rooms_public_lobby_idx
+  on public.jp_rooms (last_active_at desc)
   where is_public and status = 'waiting';
 
 -- 직접 테이블 조회에서는 공개방만 보인다. 비공개방은 정확한 코드를
--- room_get RPC에 전달해야만 조회할 수 있다.
-alter table public.rooms enable row level security;
-drop policy if exists "rooms_select_all" on public.rooms;
-drop policy if exists "rooms_select_public" on public.rooms;
-create policy "rooms_select_public" on public.rooms
+-- jp_room_get RPC에 전달해야만 조회할 수 있다.
+alter table public.jp_rooms enable row level security;
+drop policy if exists "jp_rooms_select_all" on public.jp_rooms;
+drop policy if exists "jp_rooms_select_public" on public.jp_rooms;
+create policy "jp_rooms_select_public" on public.jp_rooms
   for select using (is_public = true);
 
-create or replace function public.versus_has_blocked_terms(p_text text)
+create or replace function public.jp_versus_has_blocked_terms(p_text text)
 returns boolean
 language sql
 immutable
@@ -41,9 +41,9 @@ as $$
          ~ '(しね|死ね|ころす|殺す|くそ|クソ|ばか|バカ|あほ|アホ|きもい|うざい|ちんこ|まんこ|fuck|shit|bitch)';
 $$;
 
-revoke all on function public.versus_has_blocked_terms(text) from public;
+revoke all on function public.jp_versus_has_blocked_terms(text) from public;
 
-create or replace function public.room_create_v2(
+create or replace function public.jp_room_create_v2(
   p_code text,
   p_host text,
   p_host_name text,
@@ -51,13 +51,13 @@ create or replace function public.room_create_v2(
   p_room_title text,
   p_is_public boolean
 )
-returns public.rooms
+returns public.jp_rooms
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_room public.rooms;
+  v_room public.jp_rooms;
   v_title text := regexp_replace(trim(coalesce(p_room_title, '')), '\s+', ' ', 'g');
 begin
   if p_code !~ '^[A-Z2-9]{4,8}$' then
@@ -72,11 +72,11 @@ begin
   if p_region <> 'tokyo' then
     raise exception 'invalid region' using errcode = '22023';
   end if;
-  if char_length(v_title) not between 2 and 30 or public.versus_has_blocked_terms(v_title) then
+  if char_length(v_title) not between 2 and 30 or public.jp_versus_has_blocked_terms(v_title) then
     raise exception 'invalid or blocked room title' using errcode = '22023';
   end if;
 
-  insert into public.rooms (
+  insert into public.jp_rooms (
     code, host_id, host_name, region, mode, duration_sec, status,
     play_mode, host_revision, host_changed_at, updated_at,
     room_title, is_public, member_count, last_active_at
@@ -90,29 +90,30 @@ begin
 end;
 $$;
 
-create or replace function public.room_get(p_code text)
-returns public.rooms
+create or replace function public.jp_room_get(p_code text)
+returns public.jp_rooms
 language sql
 security definer
 set search_path = ''
 stable
 as $$
-  select rooms.*
-    from public.rooms
-   where rooms.code = upper(trim(p_code))
+  select jp_rooms.*
+    from public.jp_rooms
+   where jp_rooms.code = upper(trim(p_code))
      and upper(trim(p_code)) ~ '^[A-Z2-9]{4,8}$'
    limit 1;
 $$;
 
 -- 반환 컬럼(play_mode)이 추가되므로 기존 시그니처를 먼저 제거한다.
-drop function if exists public.room_list_public(integer);
-create function public.room_list_public(p_limit integer default 30)
+drop function if exists public.jp_room_list_public(integer);
+create function public.jp_room_list_public(p_limit integer default 30)
 returns table (
   code text,
   room_title text,
   host_name text,
   region text,
   mode text,
+  custom_lines text,
   play_mode text,
   duration_sec integer,
   status text,
@@ -124,33 +125,33 @@ security definer
 set search_path = ''
 stable
 as $$
-  select rooms.code, rooms.room_title, rooms.host_name, rooms.region, rooms.mode,
-         rooms.play_mode, rooms.duration_sec, rooms.status, rooms.member_count, rooms.created_at
-    from public.rooms
-   where rooms.is_public = true
-     and rooms.status = 'waiting'
-     and rooms.last_active_at >= now() - interval '90 seconds'
-   order by rooms.last_active_at desc, rooms.created_at desc
+  select jp_rooms.code, jp_rooms.room_title, jp_rooms.host_name, jp_rooms.region, jp_rooms.mode, jp_rooms.custom_lines,
+         jp_rooms.play_mode, jp_rooms.duration_sec, jp_rooms.status, jp_rooms.member_count, jp_rooms.created_at
+    from public.jp_rooms
+   where jp_rooms.is_public = true
+     and jp_rooms.status = 'waiting'
+     and jp_rooms.last_active_at >= now() - interval '90 seconds'
+   order by jp_rooms.last_active_at desc, jp_rooms.created_at desc
    limit greatest(1, least(coalesce(p_limit, 30), 50));
 $$;
 
-create or replace function public.room_heartbeat(
+create or replace function public.jp_room_heartbeat(
   p_room text,
   p_host text,
   p_member_count integer
 )
-returns public.rooms
+returns public.jp_rooms
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_room public.rooms;
+  v_room public.jp_rooms;
 begin
   if p_member_count not between 1 and 32 then
     raise exception 'invalid member count' using errcode = '22023';
   end if;
-  update public.rooms
+  update public.jp_rooms
      set member_count = p_member_count,
          last_active_at = now(),
          updated_at = now()
@@ -161,43 +162,43 @@ begin
 end;
 $$;
 
-create table if not exists public.room_messages (
+create table if not exists public.jp_room_messages (
   id bigint generated by default as identity primary key,
-  room_code text not null references public.rooms(code) on delete cascade,
+  room_code text not null references public.jp_rooms(code) on delete cascade,
   player_id text not null,
   player_name text not null,
   body text not null,
   report_count integer not null default 0,
   is_hidden boolean not null default false,
   created_at timestamptz not null default now(),
-  constraint room_messages_player_id_check check (char_length(player_id) between 3 and 128),
-  constraint room_messages_player_name_check check (char_length(player_name) between 1 and 40),
-  constraint room_messages_body_check check (char_length(body) between 1 and 200),
-  constraint room_messages_report_count_check check (report_count >= 0)
+  constraint jp_room_messages_player_id_check check (char_length(player_id) between 3 and 128),
+  constraint jp_room_messages_player_name_check check (char_length(player_name) between 1 and 40),
+  constraint jp_room_messages_body_check check (char_length(body) between 1 and 200),
+  constraint jp_room_messages_report_count_check check (report_count >= 0)
 );
 
-create index if not exists room_messages_room_created_idx
-  on public.room_messages (room_code, created_at desc);
+create index if not exists jp_room_messages_room_created_idx
+  on public.jp_room_messages (room_code, created_at desc);
 
-create table if not exists public.room_message_reports (
+create table if not exists public.jp_room_message_reports (
   id bigint generated by default as identity primary key,
-  message_id bigint not null references public.room_messages(id) on delete cascade,
-  room_code text not null references public.rooms(code) on delete cascade,
+  message_id bigint not null references public.jp_room_messages(id) on delete cascade,
+  room_code text not null references public.jp_rooms(code) on delete cascade,
   reporter_id text not null,
   reason text not null default '不適切な内容',
   created_at timestamptz not null default now(),
   unique (message_id, reporter_id),
-  constraint room_message_reports_reason_check check (char_length(reason) between 1 and 80)
+  constraint jp_room_message_reports_reason_check check (char_length(reason) between 1 and 80)
 );
 
-alter table public.room_messages enable row level security;
-alter table public.room_message_reports enable row level security;
+alter table public.jp_room_messages enable row level security;
+alter table public.jp_room_message_reports enable row level security;
 
 -- 채팅 테이블 직접 접근은 모두 닫고, 방 코드를 받는 아래 RPC로만 읽고 쓴다.
-revoke all on public.room_messages from anon, authenticated;
-revoke all on public.room_message_reports from anon, authenticated;
+revoke all on public.jp_room_messages from anon, authenticated;
+revoke all on public.jp_room_message_reports from anon, authenticated;
 
-create or replace function public.room_chat_history(
+create or replace function public.jp_room_chat_history(
   p_room text,
   p_limit integer default 80
 )
@@ -219,7 +220,7 @@ as $$
          history.report_count, history.is_hidden, history.created_at
     from (
       select messages.*
-        from public.room_messages messages
+        from public.jp_room_messages messages
        where messages.room_code = upper(trim(p_room))
          and messages.is_hidden = false
        order by messages.id desc
@@ -228,24 +229,24 @@ as $$
    order by history.id;
 $$;
 
-create or replace function public.room_send_message(
+create or replace function public.jp_room_send_message(
   p_room text,
   p_player text,
   p_player_name text,
   p_body text
 )
-returns public.room_messages
+returns public.jp_room_messages
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_message public.room_messages;
+  v_message public.jp_room_messages;
   v_body text := regexp_replace(trim(coalesce(p_body, '')), '\s+', ' ', 'g');
   v_compact text;
   v_recent_count integer;
 begin
-  if not exists (select 1 from public.rooms where code = upper(trim(p_room)) and status <> 'ended') then
+  if not exists (select 1 from public.jp_rooms where code = upper(trim(p_room)) and status <> 'ended') then
     raise exception 'room not found or closed' using errcode = '22023';
   end if;
   if char_length(coalesce(p_player, '')) not between 3 and 128
@@ -254,7 +255,7 @@ begin
     raise exception 'invalid chat message' using errcode = '22023';
   end if;
   v_compact := regexp_replace(lower(v_body), '[^0-9a-zぁ-んァ-ヶ一-龠々]', '', 'g');
-  if public.versus_has_blocked_terms(v_body) or v_compact ~ '(.)\1{9,}' then
+  if public.jp_versus_has_blocked_terms(v_body) or v_compact ~ '(.)\1{9,}' then
     raise exception 'blocked chat message' using errcode = '22023';
   end if;
   if (select count(*) from regexp_matches(lower(v_body), 'https?://', 'g')) > 1 then
@@ -262,7 +263,7 @@ begin
   end if;
 
   select count(*) into v_recent_count
-    from public.room_messages
+    from public.jp_room_messages
    where room_code = upper(trim(p_room))
      and player_id = p_player
      and created_at >= now() - interval '10 seconds';
@@ -270,21 +271,21 @@ begin
     raise exception 'chat rate limit exceeded' using errcode = 'P0001';
   end if;
   if exists (
-    select 1 from public.room_messages
+    select 1 from public.jp_room_messages
      where room_code = upper(trim(p_room)) and player_id = p_player
        and body = v_body and created_at >= now() - interval '30 seconds'
   ) then
     raise exception 'duplicate chat message' using errcode = 'P0001';
   end if;
 
-  insert into public.room_messages (room_code, player_id, player_name, body)
+  insert into public.jp_room_messages (room_code, player_id, player_name, body)
   values (upper(trim(p_room)), p_player, trim(p_player_name), v_body)
   returning * into v_message;
   return v_message;
 end;
 $$;
 
-create or replace function public.room_report_message(
+create or replace function public.jp_room_report_message(
   p_room text,
   p_message bigint,
   p_reporter text,
@@ -305,25 +306,25 @@ begin
     raise exception 'invalid report' using errcode = '22023';
   end if;
   if not exists (
-    select 1 from public.room_messages
+    select 1 from public.jp_room_messages
      where id = p_message and room_code = upper(trim(p_room))
        and player_id <> p_reporter
   ) then
     raise exception 'message not found or self report' using errcode = '22023';
   end if;
 
-  insert into public.room_message_reports (message_id, room_code, reporter_id, reason)
+  insert into public.jp_room_message_reports (message_id, room_code, reporter_id, reason)
   values (p_message, upper(trim(p_room)), v_reporter_identity, v_reason)
   on conflict (message_id, reporter_id) do nothing;
   get diagnostics v_inserted = row_count;
   if v_inserted = 0 then return false; end if;
 
-  update public.room_messages messages
+  update public.jp_room_messages messages
      set report_count = reports.count,
          is_hidden = reports.count >= 3
     from (
       select count(*)::integer as count
-        from public.room_message_reports
+        from public.jp_room_message_reports
        where message_id = p_message
     ) reports
    where messages.id = p_message;
@@ -333,7 +334,7 @@ $$;
 
 -- Supabase Cron에서 하루 한 번 호출할 수 있는 정리 함수.
 -- 24시간 이상 heartbeat가 없는 방과 연결된 채팅/신고가 CASCADE로 함께 삭제된다.
-create or replace function public.cleanup_stale_versus_rooms()
+create or replace function public.jp_cleanup_stale_versus_rooms()
 returns integer
 language plpgsql
 security definer
@@ -342,29 +343,29 @@ as $$
 declare
   v_deleted integer;
 begin
-  delete from public.rooms
+  delete from public.jp_rooms
    where last_active_at < now() - interval '24 hours';
   get diagnostics v_deleted = row_count;
   return v_deleted;
 end;
 $$;
 
-revoke all on function public.room_create_v2(text, text, text, text, text, boolean) from public;
-revoke all on function public.room_get(text) from public;
-revoke all on function public.room_list_public(integer) from public;
-revoke all on function public.room_heartbeat(text, text, integer) from public;
-revoke all on function public.room_chat_history(text, integer) from public;
-revoke all on function public.room_send_message(text, text, text, text) from public;
-revoke all on function public.room_report_message(text, bigint, text, text) from public;
-revoke all on function public.cleanup_stale_versus_rooms() from public;
+revoke all on function public.jp_room_create_v2(text, text, text, text, text, boolean) from public;
+revoke all on function public.jp_room_get(text) from public;
+revoke all on function public.jp_room_list_public(integer) from public;
+revoke all on function public.jp_room_heartbeat(text, text, integer) from public;
+revoke all on function public.jp_room_chat_history(text, integer) from public;
+revoke all on function public.jp_room_send_message(text, text, text, text) from public;
+revoke all on function public.jp_room_report_message(text, bigint, text, text) from public;
+revoke all on function public.jp_cleanup_stale_versus_rooms() from public;
 
-grant execute on function public.room_create_v2(text, text, text, text, text, boolean) to anon, authenticated;
-grant execute on function public.room_get(text) to anon, authenticated;
-grant execute on function public.room_list_public(integer) to anon, authenticated;
-grant execute on function public.room_heartbeat(text, text, integer) to anon, authenticated;
-grant execute on function public.room_chat_history(text, integer) to anon, authenticated;
-grant execute on function public.room_send_message(text, text, text, text) to anon, authenticated;
-grant execute on function public.room_report_message(text, bigint, text, text) to anon, authenticated;
+grant execute on function public.jp_room_create_v2(text, text, text, text, text, boolean) to anon, authenticated;
+grant execute on function public.jp_room_get(text) to anon, authenticated;
+grant execute on function public.jp_room_list_public(integer) to anon, authenticated;
+grant execute on function public.jp_room_heartbeat(text, text, integer) to anon, authenticated;
+grant execute on function public.jp_room_chat_history(text, integer) to anon, authenticated;
+grant execute on function public.jp_room_send_message(text, text, text, text) to anon, authenticated;
+grant execute on function public.jp_room_report_message(text, bigint, text, text) to anon, authenticated;
 
 notify pgrst, 'reload schema';
 

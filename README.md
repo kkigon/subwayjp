@@ -17,12 +17,12 @@
 
 ## セットアップ
 
-ゲーム本体は静的サイトとして動作します。ログイン、ランキング、オンライン対戦を有効にするには、[韓国語セットアップ手順](docs/SETUP_KO.md)に従って新しいSupabaseプロジェクトにGoogleとLINEを接続してください。
+ゲーム本体は静的サイトとして動作します。韓国版と同じSupabase／Googleログインを共有し、日本版のDBオブジェクトは`jp_`接頭辞で分離します。詳しくは[韓国語セットアップ手順](docs/SETUP_KO.md)をご覧ください。
 
-1. `supabase/schema.sql`を新規SupabaseプロジェクトのSQL Editorで1回実行
-2. Supabaseの標準Google Providerを設定
-3. LINE LoginをSupabaseのCustom OIDC Provider（`custom:line`）として登録
-4. `js/supabase-config.js`にProject URLとPublishable keyを設定
+1. `supabase/schema.sql`を韓国版SupabaseプロジェクトのSQL Editorで実行
+2. SupabaseのRedirect URLsに`https://kkigon.github.io/subwayjp/`を追加
+3. Googleは韓国版の既存Providerをそのまま利用
+4. LINE LoginをCustom OIDC Provider（`custom:line`）として追加
 
 秘密情報（Google Client secret、LINE Channel secret、Supabase service role key）はリポジトリに保存しないでください。
 

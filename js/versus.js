@@ -237,7 +237,7 @@ const Versus = (() => {
     const c = client();
     if (!c || !Room.code) return;
     try {
-      const { data, error } = await c.rpc("room_claim_host", {
+      const { data, error } = await c.rpc("jp_room_claim_host", {
         p_room: Room.code, p_expected_host: expectedHost,
         p_claimant: myId(), p_claimant_name: Room.myName,
       });
@@ -288,7 +288,7 @@ const Versus = (() => {
       const c = client();
       if (!c || !roomCode) return null;
       try {
-        const { data, error } = await c.rpc("room_get", { p_code: roomCode });
+        const { data, error } = await c.rpc("jp_room_get", { p_code: roomCode });
         if (error) throw error;
         const row = rpcRow(data);
         if (row && Room.code === roomCode && Room.epoch === epoch) applyRoomSnapshot(row);
@@ -343,7 +343,7 @@ const Versus = (() => {
     const roomCode = Room.code;
 
     // 온라인 참가자 목록과 일회성 신호는 하나의 방 채널에서 관리한다.
-    const channel = c.channel("room:" + Room.code, {
+    const channel = c.channel("subwayjp-room:" + Room.code, {
       config: { broadcast: { self: false }, presence: { key: myId() } },
     });
     channel.on("presence", { event: "sync" }, () => {
@@ -373,16 +373,16 @@ const Versus = (() => {
     Room.channel = channel;
 
     // rooms와 game_states를 한 DB 채널에서 함께 구독한다. 실패해도 폴링으로 자가치유한다.
-    const dbCh = c.channel("roomdb:" + Room.code + ":" + myId());
+    const dbCh = c.channel("subwayjp-roomdb:" + Room.code + ":" + myId());
     dbCh.on("postgres_changes",
-      { event: "*", schema: "public", table: "rooms", filter: "code=eq." + Room.code },
+      { event: "*", schema: "public", table: "jp_rooms", filter: "code=eq." + Room.code },
       (payload) => {
         if (Room.epoch !== epoch || Room.code !== roomCode) return;
         if (payload.eventType === "DELETE") return;
         if (payload.new) applyRoomSnapshot(payload.new);
       });
     dbCh.on("postgres_changes",
-      { event: "*", schema: "public", table: "game_states", filter: "room_code=eq." + Room.code },
+      { event: "*", schema: "public", table: "jp_game_states", filter: "room_code=eq." + Room.code },
       (payload) => {
         if (Room.epoch !== epoch || Room.code !== roomCode) return;
         if (payload.eventType === "DELETE") return;
@@ -440,7 +440,7 @@ const Versus = (() => {
     if (!c) return;
     heartbeatInFlight = true;
     try {
-      const { data, error } = await c.rpc("room_heartbeat", {
+      const { data, error } = await c.rpc("jp_room_heartbeat", {
         p_room: Room.code, p_host: myId(), p_member_count: Math.max(1, Room.players.length || 1),
       });
       if (!error) {
@@ -469,7 +469,7 @@ const Versus = (() => {
     const roomCode = Room.code;
     const epoch = Room.epoch;
     try {
-      const { data, error } = await c.rpc("room_chat_history", { p_room: roomCode, p_limit: 80 });
+      const { data, error } = await c.rpc("jp_room_chat_history", { p_room: roomCode, p_limit: 80 });
       if (error) throw error;
       if (Room.code === roomCode && Room.epoch === epoch) {
         const next = (Array.isArray(data) ? data : (data ? [data] : []))
@@ -503,7 +503,7 @@ const Versus = (() => {
     if (!c) return { ok: false, message: "サーバー接続が必要です。" };
     lastChatSentAt = now;
     try {
-      const { error } = await c.rpc("room_send_message", {
+      const { error } = await c.rpc("jp_room_send_message", {
         p_room: Room.code, p_player: myId(), p_player_name: Room.myName, p_body: checked.value,
       });
       if (error) throw error;
@@ -521,7 +521,7 @@ const Versus = (() => {
     if (!c) return { ok: false, message: "サーバー接続が必要です。" };
     const cleanReason = String(reason || "不適切な内容").trim().slice(0, 80);
     try {
-      const { data, error } = await c.rpc("room_report_message", {
+      const { data, error } = await c.rpc("jp_room_report_message", {
         p_room: Room.code, p_message: Number(messageId), p_reporter: myId(), p_reason: cleanReason,
       });
       if (error) throw error;
@@ -587,7 +587,7 @@ const Versus = (() => {
     const c = client();
     if (!c) return { ok: false, rooms: [], message: "サーバー接続が必要です。" };
     try {
-      const { data, error } = await c.rpc("room_list_public", { p_limit: Math.max(1, Math.min(Number(limit) || 30, 50)) });
+      const { data, error } = await c.rpc("jp_room_list_public", { p_limit: Math.max(1, Math.min(Number(limit) || 30, 50)) });
       if (error) throw error;
       return { ok: true, rooms: Array.isArray(data) ? data : [] };
     } catch (e) {
@@ -604,7 +604,7 @@ const Versus = (() => {
     const isPublic = options.isPublic !== false;
     for (let attempt = 0; attempt < 5; attempt++) {
       const code = makeCode(6);
-      const { data, error } = await c.rpc("room_create_v2", {
+      const { data, error } = await c.rpc("jp_room_create_v2", {
         p_code: code, p_host: myId(), p_host_name: Room.myName,
         p_region: "tokyo",
         p_room_title: titleResult.value, p_is_public: isPublic,
@@ -617,7 +617,7 @@ const Versus = (() => {
         applyRoomSnapshot(row);
         const connected = await connectChannel();
         if (!connected) {
-          try { await c.rpc("room_delete", { p_room: code, p_host: myId() }); } catch (e) {}
+          try { await c.rpc("jp_room_delete", { p_room: code, p_host: myId() }); } catch (e) {}
           resetRoomState();
           return { ok: false, message: "リアルタイムサーバーに接続できませんでした。" };
         }
@@ -639,7 +639,7 @@ const Versus = (() => {
     code = (code || "").trim().toUpperCase();
     if (code.length < 4) return { ok: false, message: "招待コードを正しく入力してください。" };
 
-    const { data, error } = await c.rpc("room_get", { p_code: code });
+    const { data, error } = await c.rpc("jp_room_get", { p_code: code });
     if (error) { console.warn("[Versus] ルーム照会に失敗", error.message); return { ok: false, message: serverErrorMessage(error) }; }
     const row = rpcRow(data);
     if (!row) return { ok: false, message: "ルームが見つかりません。コードをご確認ください。" };
@@ -660,7 +660,7 @@ const Versus = (() => {
 
   function serverErrorMessage(error) {
     if (!error) return "サーバーへのリクエストに失敗しました。";
-    if (error.code === "PGRST202" || /room_(create|create_v2|get|list_public|chat|send_message|report_message|heartbeat|claim_host|transfer_host)/.test(error.message || "")) {
+    if (error.code === "PGRST202" || /jp_room_(create|create_v2|get|list_public|chat|send_message|report_message|heartbeat|claim_host|transfer_host)/.test(error.message || "")) {
       return "マルチプレイ用DBの設定が必要です。READMEのSupabase設定をご確認ください。";
     }
     if (error.code === "22023") {
@@ -690,7 +690,7 @@ const Versus = (() => {
       const nextCustomLines = nextMode === "custom"
         ? (s.customLines !== undefined ? (s.customLines || []).join(",") : (current.custom_lines || ""))
         : "";
-      const { data, error } = await c.rpc("room_update_settings", {
+      const { data, error } = await c.rpc("jp_room_update_settings", {
         p_room: Room.code, p_host: myId(),
         p_region: "tokyo",
         p_mode: nextMode,
@@ -714,7 +714,7 @@ const Versus = (() => {
     const c = client();
     if (!c || !Room.code || !isHost()) return { ok: false };
     try {
-      const { data, error } = await c.rpc("room_set_status", {
+      const { data, error } = await c.rpc("jp_room_set_status", {
         p_room: Room.code, p_host: myId(), p_status: status,
       });
       if (error) throw error;
@@ -834,7 +834,7 @@ const Versus = (() => {
   function registerSelf() {
     const c = client();
     if (!c || !Room.code) return;
-    try { c.rpc("vs_join", { p_room: Room.code, p_player_id: myId(), p_name: Room.myName, p_theme: myThemeLine() }); } catch (e) {}
+    try { c.rpc("jp_vs_join", { p_room: Room.code, p_player_id: myId(), p_name: Room.myName, p_theme: myThemeLine() }); } catch (e) {}
   }
 
   // ★ 무조건 종료: 메인 타이머가 0이 되면 클라가 직접 호출. 서버 시계 판단을 기다리지 않는다.
@@ -849,7 +849,7 @@ const Versus = (() => {
     try {
       const c = client();
       if (c && roomCode) {
-        const { data, error } = await c.rpc("vs_end", { p_room: roomCode });
+        const { data, error } = await c.rpc("jp_vs_end", { p_room: roomCode });
         if (!error && data && Room.code === roomCode && Room.epoch === epoch) {
           const ns = snapFromRow(data); applyState(ns); pushState(ns);
         }
@@ -904,7 +904,7 @@ const Versus = (() => {
     try {
       const c = client();
       if (c) {
-        const { data, error } = await c.rpc("vs_tick", { p_room: roomCode });
+        const { data, error } = await c.rpc("jp_vs_tick", { p_room: roomCode });
         if (!error && data && Room.code === roomCode && Room.epoch === epoch) {
           const ns = snapFromRow(data); applyState(ns); pushState(ns);
         }
@@ -922,7 +922,7 @@ const Versus = (() => {
     try {
       const c = client();
       if (c) {
-        const { data, error } = await c.rpc("vs_sync", { p_room: roomCode });
+        const { data, error } = await c.rpc("jp_vs_sync", { p_room: roomCode });
         if (!error && data && Room.code === roomCode && Room.epoch === epoch) applyState(snapFromRow(data));
       }
     } catch (e) {}
@@ -957,7 +957,7 @@ const Versus = (() => {
 
     const names = {}; names[myId()] = { name: Room.myName, themeLine: myThemeLine() };
     try {
-      const { data, error } = await c.rpc("vs_start", {
+      const { data, error } = await c.rpc("jp_vs_start", {
         p_room: roomCode, p_host: myId(), p_region: region, p_line_ids: lineIds,
         p_order: order, p_duration: duration, p_names: names,
       });
@@ -982,7 +982,7 @@ const Versus = (() => {
     const roomCode = Room.code;
     const epoch = Room.epoch;
     try {
-      const { data, error } = await c.rpc("vs_claim", {
+      const { data, error } = await c.rpc("jp_vs_claim", {
         p_room: roomCode, p_index: index,
         p_player_id: myId(), p_player_name: Room.myName,
       });
@@ -999,7 +999,7 @@ const Versus = (() => {
     if (c && Room.code) {
       const statusResult = await setRoomStatus("waiting");
       if (!statusResult.ok) return statusResult;
-      try { const { data } = await c.rpc("vs_lobby", { p_room: Room.code, p_host: myId() }); if (data) { const ns = snapFromRow(data); applyState(ns); pushState(ns); } } catch (e) {}
+      try { const { data } = await c.rpc("jp_vs_lobby", { p_room: Room.code, p_host: myId() }); if (data) { const ns = snapFromRow(data); applyState(ns); pushState(ns); } } catch (e) {}
     }
     if (inGame) { inGame = false; startedSig = null; }
     backToLobbyListeners.forEach(fn => { try { fn(); } catch (e) {} });
@@ -1014,7 +1014,7 @@ const Versus = (() => {
     const c = client();
     if (!c) return { ok: false };
     try {
-      const { data, error } = await c.rpc("room_transfer_host", {
+      const { data, error } = await c.rpc("jp_room_transfer_host", {
         p_room: Room.code, p_current_host: myId(),
         p_new_host: newHostId, p_new_host_name: target.name,
       });
@@ -1046,7 +1046,7 @@ const Versus = (() => {
     } else if (c && Room.code && amHost && Room.presenceReady && others.length === 0) {
       // 전체 Presence 스냅샷상 혼자일 때만 서버 권한 함수로 방 삭제
       try {
-        const { error } = await c.rpc("room_delete", { p_room: Room.code, p_host: myId() });
+        const { error } = await c.rpc("jp_room_delete", { p_room: Room.code, p_host: myId() });
         if (error) throw error;
       } catch (e) { console.warn("[Versus] 空のルームの削除に失敗", e && e.message ? e.message : e); }
       await disconnectChannel();

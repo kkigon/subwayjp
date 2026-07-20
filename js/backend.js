@@ -41,7 +41,7 @@ const Account = (() => {
       // 최초 요청까지 성공해야 "설정됨"이 아니라 실제 "사용 가능"으로 본다.
       const { data, error } = await client.auth.getSession();
       if (error) throw error;
-      const { error: healthError } = await client.from("rooms").select("code").limit(1);
+      const { error: healthError } = await client.from("jp_rooms").select("code").limit(1);
       if (healthError) throw healthError;
       available = true;
       session = data.session || null;
@@ -69,7 +69,7 @@ const Account = (() => {
   async function loadProfile() {
     if (!client || !session) { profile = null; return; }
     const { data, error } = await client
-      .from("profiles")
+      .from("jp_profiles")
       .select("id, nickname, theme_line")
       .eq("id", session.user.id)
       .maybeSingle();
@@ -116,7 +116,7 @@ const Account = (() => {
     if (nickname.length < 1 || nickname.length > 12) {
       return { ok: false, reason: "error", message: "ニックネームは1〜12文字で入力してください。" };
     }
-    const { error } = await client.from("profiles").insert({
+    const { error } = await client.from("jp_profiles").insert({
       id: session.user.id,
       nickname,
       theme_line: themeLine || "G",
@@ -135,7 +135,7 @@ const Account = (() => {
   async function updateThemeLine(themeLine) {
     if (!client || !session) return false;
     const { error } = await client
-      .from("profiles")
+      .from("jp_profiles")
       .update({ theme_line: themeLine, updated_at: new Date().toISOString() })
       .eq("id", session.user.id);
     if (error) { console.warn("[Account] テーマ路線の変更に失敗", error.message); return false; }
@@ -152,7 +152,7 @@ const Account = (() => {
       return { ok: false, message: "ニックネームは1〜12文字で入力してください。" };
     }
     const { error } = await client
-      .from("profiles")
+      .from("jp_profiles")
       .update({ nickname, updated_at: new Date().toISOString() })
       .eq("id", session.user.id);
     if (error) {
@@ -177,7 +177,7 @@ const Account = (() => {
       duration_sec: duration,
       theoretical_max: theoreticalMax,
     };
-    const { error } = await client.from("plays").insert(payload);
+    const { error } = await client.from("jp_plays").insert(payload);
     if (error) { console.warn("[Account] 記録の保存に失敗", error.message); return false; }
     return true;
   }
@@ -186,7 +186,7 @@ const Account = (() => {
   async function myPlays(limit = 50) {
     if (!client || !session) return [];
     const { data, error } = await client
-      .from("plays")
+      .from("jp_plays")
       .select("score, region, mode, mode_label, duration_sec, created_at")
       .eq("user_id", session.user.id)
       .order("created_at", { ascending: false })
@@ -211,7 +211,7 @@ const Account = (() => {
     if (!client) {
       return { rows: [], error: "Supabaseに接続されていません。" };
     }
-    const { data, error } = await client.rpc("all_time_ranking_by_duration", {
+    const { data, error } = await client.rpc("jp_all_time_ranking_by_duration", {
       p_mode: "tokyo:all",
       p_duration: duration,
       p_limit: limit,
