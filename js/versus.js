@@ -686,11 +686,15 @@ const Versus = (() => {
     if (!c) return { ok: false, message: "サーバー接続が必要です。" };
     try {
       const current = Room.data || {};
+      const nextMode = s.mode !== undefined ? s.mode : (current.mode || "all");
+      const nextCustomLines = nextMode === "custom"
+        ? (s.customLines !== undefined ? (s.customLines || []).join(",") : (current.custom_lines || ""))
+        : "";
       const { data, error } = await c.rpc("room_update_settings", {
         p_room: Room.code, p_host: myId(),
         p_region: "tokyo",
-        p_mode: "all",
-        p_custom_lines: "",
+        p_mode: nextMode,
+        p_custom_lines: nextCustomLines,
         p_duration: GAME_DURATIONS.includes(Number(s.duration !== undefined ? s.duration : current.duration_sec))
           ? Number(s.duration !== undefined ? s.duration : current.duration_sec) : 60,
         p_play_mode: "timed",
@@ -808,7 +812,7 @@ const Versus = (() => {
         if (Room.data) Room.data.status = "playing";
         registerSelf();   // 내 이름/색을 DB names에 등록(나가도 순위에 남게)
         const cfg = {
-          region: snap.region, mode: "all", lineIds: snap.lineIds,
+          region: snap.region, mode: Room.data?.mode === "custom" ? "custom" : "all", lineIds: snap.lineIds,
           duration: snap.duration, playMode: snap.playMode,
           order: snap.order, playAt: snap.playAt,
         };
@@ -929,13 +933,16 @@ const Versus = (() => {
   async function startGame(settings) {
     if (!Room.code || !isHost()) return { ok: false, message: "ホストだけがゲームを開始できます。" };
     const region = "tokyo";
-    const mode = "all";
-    const customLines = [];
+    const mode = settings.mode === "custom" ? "custom" : "all";
+    const customLines = mode === "custom" ? (settings.customLines || []) : [];
     const duration = GAME_DURATIONS.includes(Number(settings.duration)) ? Number(settings.duration) : 60;
     const playMode = "timed";
 
     // 디바운스 저장이 아직 대기 중이어도 시작 직전에 방 설정을 확정한다.
     // 참가자들은 rooms Realtime 행의 play_mode를 받아 같은 판정 규칙으로 시작한다.
+    if (mode === "custom" && customLines.length === 0) {
+      return { ok: false, message: "カスタムでは路線を1つ以上選択してください。" };
+    }
     const settingsResult = await updateSettings({ region, mode, customLines, duration, playMode });
     if (!settingsResult.ok) return { ok: false, message: settingsResult.message || "ルーム設定を保存できませんでした。" };
 

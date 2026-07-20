@@ -1,5 +1,5 @@
 /* ============================================================
-   LINEログイン・プロフィール・ランキングUI
+   Google／LINEログイン・プロフィール・ランキングUI
    ============================================================ */
 
 (() => {
@@ -17,18 +17,32 @@
     wrap.innerHTML = "";
 
     if (!Account.isLoggedIn()) {
-      const button = document.createElement("button");
-      button.className = "account-btn login line-login";
-      button.type = "button";
-      button.textContent = "LINEでログイン";
-      button.addEventListener("click", async () => {
+      const googleButton = document.createElement("button");
+      googleButton.className = "account-btn login google-login";
+      googleButton.type = "button";
+      googleButton.textContent = "G Google";
+      googleButton.setAttribute("aria-label", "Googleでログイン");
+      googleButton.addEventListener("click", async () => {
         if (!Account.isConfigured()) {
-          if (typeof toast === "function") toast("LINEログインは現在準備中です。");
+          if (typeof toast === "function") toast("ログインは現在準備中です。");
+          return;
+        }
+        await Account.signInWithGoogle();
+      });
+
+      const lineButton = document.createElement("button");
+      lineButton.className = "account-btn login line-login";
+      lineButton.type = "button";
+      lineButton.textContent = "LINE";
+      lineButton.setAttribute("aria-label", "LINEでログイン");
+      lineButton.addEventListener("click", async () => {
+        if (!Account.isConfigured()) {
+          if (typeof toast === "function") toast("ログインは現在準備中です。");
           return;
         }
         await Account.signInWithLine();
       });
-      wrap.appendChild(button);
+      wrap.append(googleButton, lineButton);
       return;
     }
 
@@ -104,7 +118,7 @@
     if (!profile) return;
     openModal("#mypage-modal");
     $("#mypage-nicktag").innerHTML = nickTagHTML(profile.nickname, profile.theme_line);
-    $("#mypage-email").textContent = Account.getEmail() || "LINEアカウント";
+    $("#mypage-email").textContent = Account.getEmail() || "ソーシャルアカウント";
 
     let chosen = profile.theme_line;
     buildThemePicker($("#mypage-theme-grid"), chosen, async id => {
@@ -211,8 +225,8 @@
     if (!document.querySelector(".modal-backdrop.show")) document.body.classList.remove("modal-open");
   }
 
-  window.onPlayFinished = async ({ score, playMode, duration, theoreticalMax }) => {
-    if (playMode !== "timed" || !Account.isLoggedIn() || !Account.hasProfile()) return;
+  window.onPlayFinished = async ({ score, mode, playMode, duration, theoreticalMax }) => {
+    if (mode !== "all" || playMode !== "timed" || !Account.isLoggedIn() || !Account.hasProfile()) return;
     await Account.savePlay({
       score,
       modeLabel: `東京 地下鉄全13路線・${duration}秒`,

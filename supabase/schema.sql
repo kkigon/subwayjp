@@ -136,8 +136,11 @@ create table if not exists public.rooms (
   host_id text not null,
   host_name text not null check (char_length(host_name) between 1 and 40),
   region text not null default 'tokyo' check (region = 'tokyo'),
-  mode text not null default 'all' check (mode = 'all'),
-  custom_lines text not null default '' check (custom_lines = ''),
+  mode text not null default 'all' check (mode in ('all', 'custom')),
+  custom_lines text not null default '' check (
+    (mode = 'all' and custom_lines = '') or
+    (mode = 'custom' and custom_lines ~ '^(G|M|H|T|C|Y|Z|N|F|A|I|S|E)(,(G|M|H|T|C|Y|Z|N|F|A|I|S|E))*$')
+  ),
   duration_sec integer not null default 60 check (duration_sec in (60, 120, 300)),
   play_mode text not null default 'timed' check (play_mode = 'timed'),
   status text not null default 'waiting' check (status in ('waiting', 'playing', 'ended')),
@@ -149,6 +152,15 @@ create table if not exists public.rooms (
   last_active_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   created_at timestamptz not null default now()
+);
+
+-- 이미 초기 스키마를 적용한 개발 DB도 커스텀 모드를 받을 수 있게 제약을 갱신한다.
+alter table public.rooms drop constraint if exists rooms_mode_check;
+alter table public.rooms add constraint rooms_mode_check check (mode in ('all', 'custom'));
+alter table public.rooms drop constraint if exists rooms_custom_lines_check;
+alter table public.rooms add constraint rooms_custom_lines_check check (
+  (mode = 'all' and custom_lines = '') or
+  (mode = 'custom' and custom_lines ~ '^(G|M|H|T|C|Y|Z|N|F|A|I|S|E)(,(G|M|H|T|C|Y|Z|N|F|A|I|S|E))*$')
 );
 
 create index if not exists rooms_created_idx on public.rooms (created_at);
@@ -252,19 +264,35 @@ set search_path = ''
 as $$
 declare
   v_room public.rooms;
+  v_custom text[];
+  v_normalized text;
 begin
   if p_region <> 'tokyo'
-     or p_mode <> 'all'
-     or coalesce(p_custom_lines, '') <> ''
+     or p_mode not in ('all', 'custom')
      or p_play_mode <> 'timed'
      or p_duration not in (60, 120, 300) then
     raise exception 'invalid room settings' using errcode = '22023';
   end if;
 
+  if p_mode = 'all' then
+    if coalesce(p_custom_lines, '') <> '' then
+      raise exception 'all mode cannot include custom lines' using errcode = '22023';
+    end if;
+    v_normalized := '';
+  else
+    v_custom := string_to_array(coalesce(p_custom_lines, ''), ',');
+    if coalesce(array_length(v_custom, 1), 0) not between 1 and 13
+       or not (v_custom <@ array['G','M','H','T','C','Y','Z','N','F','A','I','S','E']::text[])
+       or (select count(distinct item) from unnest(v_custom) item) <> array_length(v_custom, 1) then
+      raise exception 'invalid custom lines' using errcode = '22023';
+    end if;
+    v_normalized := array_to_string(v_custom, ',');
+  end if;
+
   update public.rooms
      set region = 'tokyo',
-         mode = 'all',
-         custom_lines = '',
+         mode = p_mode,
+         custom_lines = v_normalized,
          duration_sec = p_duration,
          play_mode = 'timed',
          updated_at = now()
@@ -851,10 +879,15 @@ create or replace function public.vs_start(
   p_duration integer, p_names jsonb
 )
 returns public.game_states language plpgsql security definer set search_path = '' as $$
-declare v_state public.game_states; v_play_at timestamptz := clock_timestamp() + interval '3 seconds';
+declare
+  v_state public.game_states;
+  v_play_at timestamptz := clock_timestamp() + interval '3 seconds';
+  v_allowed constant text[] := array['G','M','H','T','C','Y','Z','N','F','A','I','S','E']::text[];
 begin
   if p_region <> 'tokyo' or p_duration not in (60,120,300)
-     or coalesce(array_length(p_line_ids, 1), 0) <> 13
+     or coalesce(array_length(p_line_ids, 1), 0) not between 1 and 13
+     or not (p_line_ids <@ v_allowed)
+     or (select count(distinct item) from unnest(p_line_ids) item) <> array_length(p_line_ids, 1)
      or coalesce(array_length(p_order, 1), 0) < 1 then
     raise exception 'invalid game settings' using errcode = '22023';
   end if;

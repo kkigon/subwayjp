@@ -90,19 +90,35 @@ set search_path = ''
 as $$
 declare
   v_room public.rooms;
+  v_custom text[];
+  v_normalized text;
 begin
   if p_region <> 'tokyo'
-     or p_mode <> 'all'
-     or coalesce(p_custom_lines, '') <> ''
+     or p_mode not in ('all', 'custom')
      or p_play_mode <> 'timed'
      or p_duration not in (60, 120, 300) then
     raise exception 'invalid room settings' using errcode = '22023';
   end if;
 
+  if p_mode = 'all' then
+    if coalesce(p_custom_lines, '') <> '' then
+      raise exception 'all mode cannot include custom lines' using errcode = '22023';
+    end if;
+    v_normalized := '';
+  else
+    v_custom := string_to_array(coalesce(p_custom_lines, ''), ',');
+    if coalesce(array_length(v_custom, 1), 0) not between 1 and 13
+       or not (v_custom <@ array['G','M','H','T','C','Y','Z','N','F','A','I','S','E']::text[])
+       or (select count(distinct item) from unnest(v_custom) item) <> array_length(v_custom, 1) then
+      raise exception 'invalid custom lines' using errcode = '22023';
+    end if;
+    v_normalized := array_to_string(v_custom, ',');
+  end if;
+
   update public.rooms
      set region = 'tokyo',
-         mode = 'all',
-         custom_lines = '',
+         mode = p_mode,
+         custom_lines = v_normalized,
          duration_sec = p_duration,
          play_mode = 'timed',
          updated_at = now()

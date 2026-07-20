@@ -28,10 +28,15 @@ create or replace function public.vs_start(
   p_duration integer, p_names jsonb
 )
 returns public.game_states language plpgsql security definer set search_path = '' as $$
-declare v_state public.game_states; v_play_at timestamptz := clock_timestamp() + interval '3 seconds';
+declare
+  v_state public.game_states;
+  v_play_at timestamptz := clock_timestamp() + interval '3 seconds';
+  v_allowed constant text[] := array['G','M','H','T','C','Y','Z','N','F','A','I','S','E']::text[];
 begin
   if p_region <> 'tokyo' or p_duration not in (60,120,300)
-     or coalesce(array_length(p_line_ids, 1), 0) <> 13
+     or coalesce(array_length(p_line_ids, 1), 0) not between 1 and 13
+     or not (p_line_ids <@ v_allowed)
+     or (select count(distinct item) from unnest(p_line_ids) item) <> array_length(p_line_ids, 1)
      or coalesce(array_length(p_order, 1), 0) < 1 then
     raise exception 'invalid game settings' using errcode = '22023';
   end if;

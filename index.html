@@ -75,6 +75,25 @@
         <div id="home-line-badges" class="home-line-badges"></div>
       </div>
 
+      <fieldset class="mode-select two-cols">
+        <legend class="sr-only">出題する路線を選択</legend>
+        <label class="mode-option">
+          <input type="radio" name="mode" value="all" checked>
+          <span class="mode-card">
+            <strong>全13路線</strong>
+            <small>すべての地下鉄路線から出題</small>
+          </span>
+        </label>
+        <label class="mode-option">
+          <input type="radio" name="mode" value="custom">
+          <span class="mode-card">
+            <strong>カスタム</strong>
+            <small>好きな路線を選択（ランキング対象外）</small>
+          </span>
+        </label>
+      </fieldset>
+      <div id="custom-lines" class="custom-lines" aria-label="出題する路線"></div>
+
       <fieldset class="play-mode-select two-cols">
         <legend class="sr-only">プレイモードを選択</legend>
         <label class="play-mode-option">
@@ -199,6 +218,14 @@
 
       <div id="vs-host-controls" class="vs-host-controls">
         <p class="field-label">ゲーム設定</p>
+        <div class="vs-setting-row">
+          <span class="vs-setting-label">路線</span>
+          <div class="vs-seg" id="vs-set-mode">
+            <button type="button" class="vs-seg-btn active" data-mode="all">全13路線</button>
+            <button type="button" class="vs-seg-btn" data-mode="custom">カスタム</button>
+          </div>
+        </div>
+        <div id="vs-custom-lines" class="vs-custom-lines" aria-label="対戦で使用する路線"></div>
         <div class="vs-setting-row">
           <span class="vs-setting-label">制限時間</span>
           <div class="vs-seg" id="vs-set-duration">

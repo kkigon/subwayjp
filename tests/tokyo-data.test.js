@@ -9,6 +9,7 @@ const context = vm.createContext({ console });
 vm.runInContext(fs.readFileSync(path.join(root, "js/data.js"), "utf8"), context);
 const lines = vm.runInContext("LINES", context);
 const meta = vm.runInContext("STATION_META", context);
+const anchors = vm.runInContext("ANCHORS", context);
 vm.runInContext(fs.readFileSync(path.join(root, "js/layout.js"), "utf8"), context);
 
 test("Tokyo edition contains exactly the 13 subway lines", () => {
@@ -16,7 +17,7 @@ test("Tokyo edition contains exactly the 13 subway lines", () => {
   assert.equal(lines.every(line => line.region === "tokyo"), true);
 });
 
-test("all 216 unique stations have kana, numbering and coordinates", () => {
+test("all 216 unique stations have kana and numbering", () => {
   const stationNames = new Set(lines.flatMap(line => line.segments.flat()));
   assert.equal(stationNames.size, 216);
   for (const name of stationNames) {
@@ -45,6 +46,26 @@ test("the complete game network builds with finite map coordinates", () => {
   assert.equal(summary.quizStations, 216);
   assert.ok(summary.edges > 200);
   assert.equal(summary.finite, true);
+});
+
+test("schematic layout uses key anchors and octilinear route segments", () => {
+  const stationNames = new Set(lines.flatMap(line => line.segments.flat()));
+  assert.ok(Object.keys(anchors).length >= 60);
+  assert.ok(Object.keys(anchors).length < stationNames.size);
+  const summary = vm.runInContext(`(() => {
+    const network = buildNetwork(LINES.map(line => line.id));
+    const octilinear = network.edges.every(edge => {
+      const points = [[edge.ax, edge.ay], ...(edge.via || []), [edge.bx, edge.by]];
+      return points.slice(1).every((point, index) => {
+        const previous = points[index];
+        const dx = Math.abs(point[0] - previous[0]);
+        const dy = Math.abs(point[1] - previous[1]);
+        return dx < 0.001 || dy < 0.001 || Math.abs(dx - dy) < 0.001;
+      });
+    });
+    return { octilinear };
+  })()`, context);
+  assert.equal(summary.octilinear, true);
 });
 
 test("Marunouchi branch and Oedo loop are represented as separate segments", () => {

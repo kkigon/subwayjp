@@ -664,6 +664,9 @@ body {
 .account-btn.login:hover { transform: translateY(-1px); }
 .account-btn.line-login { background: #06c755; border-color: #06c755; color: #fff; }
 .account-btn.line-login:hover { background: #05ad4a; border-color: #05ad4a; }
+.account-btn.google-login { background: #fff; border-color: #d7dbe2; color: #3c4043; }
+.account-btn.google-login::first-letter { color: #4285f4; }
+.account-btn.google-login:hover { border-color: #aeb5c0; }
 
 /* 닉네임 태그 (테마 노선 색 테두리) */
 .nick-tag {
@@ -860,6 +863,7 @@ body.modal-open { overflow: hidden; }
   .theme-grid { grid-template-columns: repeat(3, 1fr); }
   .nick-tag { font-size: 13px; }
   .account-area { right: 12px; }
+  .account-btn.login { padding: 8px 11px; font-size: 12px; }
 }
 
 /* ============================================================

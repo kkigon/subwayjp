@@ -3,9 +3,9 @@
 
    1. 新しいSupabaseプロジェクトを作成
    2. Project URLとPublishable keyを下へ入力
-   3. Auth > ProvidersでCustom OIDC「custom:line」を有効化
+   3. Auth > ProvidersでGoogleとCustom OIDC「custom:line」を有効化
 
-   service_role keyやLINE Channel secretをここへ書かないこと。
+   service_role key、Google Client secret、LINE Channel secretをここへ書かないこと。
    ============================================================ */
 
 const SUPABASE_URL = "";

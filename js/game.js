@@ -115,7 +115,39 @@ function regionMapOptions(displayLineIds = regionLineIds()) {
   };
 }
 
-function selectedLineIds() { return regionLineIds(); }
+function selectedLineIds() {
+  if (State.mode === "custom") return [...State.customLines];
+  return regionLineIds();
+}
+
+function buildCustomPicker() {
+  const box = $("#custom-lines");
+  if (!box) return;
+  box.innerHTML = "";
+  for (const line of regionLines()) {
+    const label = document.createElement("label");
+    label.className = "line-check";
+    label.innerHTML = `
+      <input type="checkbox" value="${line.id}">
+      <span class="line-chip" style="--c:${line.color};--t:${line.darkText ? "#23262b" : "#fff"}">${line.badge}</span>
+      <span class="line-check-name">${line.name}</span>`;
+    const input = label.querySelector("input");
+    input.checked = State.customLines.has(line.id);
+    input.addEventListener("change", () => {
+      input.checked ? State.customLines.add(line.id) : State.customLines.delete(line.id);
+      updateStartButton();
+    });
+    box.appendChild(label);
+  }
+}
+
+function updateStartButton() {
+  const button = $("#btn-start");
+  if (!button) return;
+  const empty = State.mode === "custom" && State.customLines.size === 0;
+  button.disabled = empty;
+  button.textContent = empty ? "路線を選択してください" : "ゲームスタート";
+}
 
 function buildHomeLineBadges() {
   const box = $("#home-line-badges");
@@ -186,7 +218,8 @@ function shuffle(arr) {
 ------------------------------------------------------ */
 function startVersusGame(config) {
   State.region = "tokyo";
-  State.mode = "all";
+  State.mode = config.mode === "custom" ? "custom" : "all";
+  State.customLines = new Set(State.mode === "custom" ? (config.lineIds || []) : []);
   State.playMode = "timed";
   State.versus = true;
   State.versusDuration = config.duration || 60;
@@ -688,13 +721,19 @@ function regionLabel() {
 }
 
 // 현재 게임 모드를 사람이 읽을 수 있는 문구로 (지역 포함)
-function modeLabel() { return "東京 地下鉄全13路線"; }
+function modeLabel() {
+  if (State.mode !== "custom") return "東京 地下鉄全13路線";
+  const names = [...State.customLines].map(id => lineById(id)?.name).filter(Boolean);
+  if (names.length === 0) return "東京 カスタム";
+  if (names.length <= 3) return `東京 カスタム（${names.join("・")}）`;
+  return `東京 カスタム（${names.length}路線）`;
+}
 
 function shareText() {
   if (State.playMode === "endless") {
-    return `🚇 サブウェイ・ゲッサー｜エンドレスで${State.score}駅連続正解！ あなたも挑戦してみて！`;
+    return `🚇 サブウェイ・ゲッサー｜${modeLabel()}・エンドレスで${State.score}駅連続正解！ あなたも挑戦してみて！`;
   }
-  return `🚇 サブウェイ・ゲッサー｜${State.gameDuration}秒で東京の地下鉄${State.score}駅正解！ あなたも挑戦してみて！`;
+  return `🚇 サブウェイ・ゲッサー｜${modeLabel()}で${State.gameDuration}秒に${State.score}駅正解！ あなたも挑戦してみて！`;
 }
 
 async function doShare(kind) {
@@ -734,8 +773,9 @@ function goHome() {
   State.studying = false;
   State.versus = false;
   const homePlayMode = document.querySelector('input[name="playmode"]:checked')?.value;
+  const homeMode = document.querySelector('input[name="mode"]:checked')?.value;
   State.region = "tokyo";
-  State.mode = "all";
+  State.mode = homeMode === "custom" ? "custom" : "all";
   if (homePlayMode) State.playMode = homePlayMode;
   cancelAnimationFrame(State.timerFrame);
   document.body.classList.remove("in-game", "at-end", "studying", "endless-mode");
@@ -778,7 +818,16 @@ function exitStudy() {
 document.addEventListener("DOMContentLoaded", () => {
   SubwayMap.init($("#map-container"));
   buildHomeLineBadges();
+  buildCustomPicker();
   goHome();
+
+  document.querySelectorAll('input[name="mode"]').forEach(radio => {
+    radio.addEventListener("change", () => {
+      State.mode = radio.value === "custom" ? "custom" : "all";
+      $("#custom-lines")?.classList.toggle("show", State.mode === "custom");
+      updateStartButton();
+    });
+  });
 
   // プレイモード選択（タイムアタック／エンドレス）
   document.querySelectorAll('input[name="playmode"]').forEach(radio => {
@@ -852,7 +901,13 @@ window.VersusGame = {
   start: startVersusGame,        // 게임 시작(설정+순서로 화면 준비)
   buildOrder: buildVersusOrder,  // 방장이 호출: 문제 순서 생성
   applyState: applyVersusState,  // 방장 스냅샷 수신 → 화면 반영(자가치유)
-  resolveLineIds() { return LINES.map(line => line.id); },
+  resolveLineIds(_region, mode, customLines) {
+    if (mode === "custom" && Array.isArray(customLines) && customLines.length) {
+      const allowed = new Set(LINES.map(line => line.id));
+      return [...new Set(customLines)].filter(id => allowed.has(id));
+    }
+    return LINES.map(line => line.id);
+  },
   isVersus: () => State.versus,
   currentIndex: () => State.vsIndex,
   getScores: () => State.vsScores,

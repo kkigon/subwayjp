@@ -6,23 +6,25 @@
 
 - タイムアタック：60秒・120秒・300秒。制限時間ごとに歴代ランキングを集計
 - エンドレス：1問間違えるまで連続正解に挑戦
+- カスタム：東京の地下鉄13路線から好きな路線だけを選択（オンライン対戦にも対応）
 - 学習モード：路線図を自由に移動・拡大して全駅名を確認
 - オンライン対戦：公開／非公開ルーム、招待コード、リアルタイム得点、チャットと通報
 - 日本語入力：漢字・ひらがな・カタカナ・ローマ字・駅ナンバリングで候補検索
 - ヒント：駅名のよみがなを1文字おきに表示
-- LINEログイン、LINE／Web Share／X／リンクコピーで結果を共有
+- Google／LINEログイン、LINE／Web Share／X／リンクコピーで結果を共有
 
-出題範囲は常に東京の地下鉄全13路線・216駅です。JR・私鉄・直通先の駅は含みません。
+基本の出題範囲は東京の地下鉄全13路線・216駅で、カスタムでは選択路線だけに絞れます。JR・私鉄・直通先の駅は含みません。公式ランキングは条件を揃えるため全13路線のタイムアタックのみ集計します。
 
 ## セットアップ
 
-ゲーム本体は静的サイトとして動作します。ログイン、ランキング、オンライン対戦を有効にするには、[韓国語セットアップ手順](docs/SETUP_KO.md)に従って新しいSupabaseプロジェクトとLINE Loginチャンネルを接続してください。
+ゲーム本体は静的サイトとして動作します。ログイン、ランキング、オンライン対戦を有効にするには、[韓国語セットアップ手順](docs/SETUP_KO.md)に従って新しいSupabaseプロジェクトにGoogleとLINEを接続してください。
 
 1. `supabase/schema.sql`を新規SupabaseプロジェクトのSQL Editorで1回実行
-2. LINE LoginをSupabaseのCustom OIDC Provider（`custom:line`）として登録
-3. `js/supabase-config.js`にProject URLとPublishable keyを設定
+2. Supabaseの標準Google Providerを設定
+3. LINE LoginをSupabaseのCustom OIDC Provider（`custom:line`）として登録
+4. `js/supabase-config.js`にProject URLとPublishable keyを設定
 
-秘密情報（LINE Channel secret、Supabase service role key）はリポジトリに保存しないでください。
+秘密情報（Google Client secret、LINE Channel secret、Supabase service role key）はリポジトリに保存しないでください。
 
 ## データとライセンス
 

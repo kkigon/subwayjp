@@ -1,4 +1,4 @@
-/* オンライン対戦の画面制御。ゲーム範囲は東京・全13路線に固定。 */
+/* オンライン対戦の画面制御。東京の全13路線／カスタム範囲に対応。 */
 (() => {
   const $ = selector => document.querySelector(selector);
   const escapeHtml = value => String(value || "").replace(/[&<>"']/g, char => ({
@@ -11,7 +11,7 @@
   let settingsWired = false;
   let unreadChat = 0;
   let lastChatMessageId = null;
-  const vsSettings = { duration: 60 };
+  const vsSettings = { mode: "all", customLines: [], duration: 60 };
 
   function showScreen(selector) {
     document.querySelectorAll(".vs-screen").forEach(screen => screen.classList.remove("show"));
@@ -134,7 +134,7 @@
         <strong class="vs-room-title">${escapeHtml(room.room_title || "名前のないルーム")}</strong>
         <div class="vs-room-meta">
           <span>👑 ${escapeHtml(room.host_name || "ゲスト")}</span>
-          <span>🚇 東京・全13路線</span>
+          <span>🚇 ${room.mode === "custom" ? `カスタム（${String(room.custom_lines || "").split(",").filter(Boolean).length}路線）` : "東京・全13路線"}</span>
           <span>⏱ ${Number(room.duration_sec) || 60}秒</span>
           <span>👥 ${Math.max(1, Number(room.member_count) || 1)}人</span>
         </div>
@@ -202,19 +202,59 @@
   }
 
   function syncSettingsFromRoom() {
+    const mode = Versus.Room.data?.mode;
+    vsSettings.mode = mode === "custom" ? "custom" : "all";
+    vsSettings.customLines = String(Versus.Room.data?.custom_lines || "")
+      .split(",").filter(id => LINES.some(line => line.id === id));
     const duration = Number(Versus.Room.data?.duration_sec);
     vsSettings.duration = [60, 120, 300].includes(duration) ? duration : 60;
+    document.querySelectorAll("#vs-set-mode .vs-seg-btn").forEach(button => {
+      button.classList.toggle("active", button.dataset.mode === vsSettings.mode);
+    });
     document.querySelectorAll("#vs-set-duration .vs-seg-btn").forEach(button => {
       button.classList.toggle("active", Number(button.dataset.dur) === vsSettings.duration);
     });
+    buildVsCustomPicker();
+    updateCustomVisibility();
+  }
+
+  function updateCustomVisibility() {
+    $("#vs-custom-lines")?.classList.toggle("show", vsSettings.mode === "custom");
+  }
+
+  function buildVsCustomPicker() {
+    const box = $("#vs-custom-lines");
+    if (!box || typeof LINES === "undefined") return;
+    box.innerHTML = "";
+    for (const line of LINES) {
+      const label = document.createElement("label");
+      label.className = "line-check";
+      label.innerHTML = `<input type="checkbox" value="${line.id}">
+        <span class="line-chip" style="--c:${line.color};--t:${line.darkText ? "#23262b" : "#fff"}">${line.badge}</span>
+        <span class="line-check-name">${escapeHtml(line.name)}</span>`;
+      const input = label.querySelector("input");
+      input.checked = vsSettings.customLines.includes(line.id);
+      input.addEventListener("change", () => {
+        if (input.checked && !vsSettings.customLines.includes(line.id)) vsSettings.customLines.push(line.id);
+        if (!input.checked) vsSettings.customLines = vsSettings.customLines.filter(id => id !== line.id);
+        queueSettingsSave();
+      });
+      box.appendChild(label);
+    }
   }
 
   function queueSettingsSave() {
     if (!Versus.isHost() || !Versus.Room.code) return;
+    // カスタムを選んだ直後（まだ0路線）は編集中。1路線以上になるまでDBへ送らない。
+    if (vsSettings.mode === "custom" && vsSettings.customLines.length === 0) return;
     if (settingsSaveTimer) clearTimeout(settingsSaveTimer);
     settingsSaveTimer = setTimeout(async () => {
       settingsSaveTimer = null;
-      const result = await Versus.updateSettings({ duration: vsSettings.duration });
+      const result = await Versus.updateSettings({
+        mode: vsSettings.mode,
+        customLines: vsSettings.customLines,
+        duration: vsSettings.duration,
+      });
       if (!result.ok) console.warn("[VersusUI] ルーム設定の保存に失敗", result.message || "unknown");
     }, 250);
   }
@@ -222,6 +262,15 @@
   function wireSettingsOnce() {
     if (settingsWired) return;
     settingsWired = true;
+    $("#vs-set-mode")?.querySelectorAll(".vs-seg-btn").forEach(button => {
+      button.addEventListener("click", () => {
+        $("#vs-set-mode").querySelectorAll(".vs-seg-btn").forEach(item => item.classList.remove("active"));
+        button.classList.add("active");
+        vsSettings.mode = button.dataset.mode === "custom" ? "custom" : "all";
+        updateCustomVisibility();
+        queueSettingsSave();
+      });
+    });
     $("#vs-set-duration")?.querySelectorAll(".vs-seg-btn").forEach(button => {
       button.addEventListener("click", () => {
         $("#vs-set-duration").querySelectorAll(".vs-seg-btn").forEach(item => item.classList.remove("active"));
@@ -234,10 +283,18 @@
   }
 
   async function doStartGame() {
+    if (vsSettings.mode === "custom" && vsSettings.customLines.length === 0) {
+      alert("カスタムでは路線を1つ以上選択してください。");
+      return;
+    }
     const button = $("#vs-start-btn");
     button.disabled = true;
     button.textContent = "開始中…";
-    const result = await Versus.startGame({ duration: vsSettings.duration });
+    const result = await Versus.startGame({
+      mode: vsSettings.mode,
+      customLines: vsSettings.customLines,
+      duration: vsSettings.duration,
+    });
     button.disabled = false;
     button.textContent = "対戦スタート";
     if (!result.ok) alert(result.message || "ゲームを開始できませんでした。");

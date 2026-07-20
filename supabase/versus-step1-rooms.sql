@@ -4,8 +4,11 @@ create table if not exists public.rooms (
   host_id text not null,
   host_name text not null check (char_length(host_name) between 1 and 40),
   region text not null default 'tokyo' check (region = 'tokyo'),
-  mode text not null default 'all' check (mode = 'all'),
-  custom_lines text not null default '' check (custom_lines = ''),
+  mode text not null default 'all' check (mode in ('all', 'custom')),
+  custom_lines text not null default '' check (
+    (mode = 'all' and custom_lines = '') or
+    (mode = 'custom' and custom_lines ~ '^(G|M|H|T|C|Y|Z|N|F|A|I|S|E)(,(G|M|H|T|C|Y|Z|N|F|A|I|S|E))*$')
+  ),
   duration_sec integer not null default 60 check (duration_sec in (60, 120, 300)),
   play_mode text not null default 'timed' check (play_mode = 'timed'),
   status text not null default 'waiting' check (status in ('waiting', 'playing', 'ended')),
@@ -17,6 +20,15 @@ create table if not exists public.rooms (
   last_active_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   created_at timestamptz not null default now()
+);
+
+-- 이미 초기 스키마를 적용한 개발 DB도 커스텀 모드를 받을 수 있게 제약을 갱신한다.
+alter table public.rooms drop constraint if exists rooms_mode_check;
+alter table public.rooms add constraint rooms_mode_check check (mode in ('all', 'custom'));
+alter table public.rooms drop constraint if exists rooms_custom_lines_check;
+alter table public.rooms add constraint rooms_custom_lines_check check (
+  (mode = 'all' and custom_lines = '') or
+  (mode = 'custom' and custom_lines ~ '^(G|M|H|T|C|Y|Z|N|F|A|I|S|E)(,(G|M|H|T|C|Y|Z|N|F|A|I|S|E))*$')
 );
 
 create index if not exists rooms_created_idx on public.rooms (created_at);

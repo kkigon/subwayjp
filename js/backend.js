@@ -89,6 +89,18 @@ const Account = (() => {
     return true;
   }
 
+  // Supabaseの標準Google OAuth Providerでログインを開始する。
+  async function signInWithGoogle() {
+    if (!client) return false;
+    const redirectTo = location.href.split(/[?#]/)[0];
+    const { error } = await client.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo },
+    });
+    if (error) { console.warn("[Account] Googleログインに失敗", error.message); return false; }
+    return true;
+  }
+
   async function signOut() {
     if (!client) return;
     await client.auth.signOut();
@@ -223,7 +235,7 @@ const Account = (() => {
     getEmail: () => session?.user?.email || session?.user?.user_metadata?.name || null,
     getUserId: () => session?.user?.id || null,
     getClient: () => client,          // 대전 모드(Realtime)에서 사용
-    signInWithLine, signOut,
+    signInWithGoogle, signInWithLine, signOut,
     createProfile, updateThemeLine, updateNickname,
     savePlay, myPlays, myBest, allTimeRanking,
   };

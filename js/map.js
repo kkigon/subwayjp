@@ -214,10 +214,23 @@ const SubwayMap = (() => {
       });
       gStations.appendChild(c);
 
+      // ラベルを全駅で同じ下側に置くと都心部で重なるため、駅名から作る
+      // 安定した方向値で上下左右へ分散する。再描画しても位置は変わらない。
+      const labelSeed = [...st.key].reduce((sum, char) => sum + char.codePointAt(0), 0);
+      let labelX = st.x, labelY = st.y + 22, labelAnchor = "middle";
+      if (isTransfer) {
+        const directions = [
+          [16, 5, "start"], [-16, 5, "end"], [0, -15, "middle"], [0, 28, "middle"],
+        ];
+        const [dx, dy, anchor] = directions[labelSeed % directions.length];
+        labelX += dx; labelY = st.y + dy; labelAnchor = anchor;
+      } else if (labelSeed % 2 === 0) {
+        labelY = st.y - 11;
+      }
       const label = el("text", {
-        x: st.x, y: st.y + (isTransfer ? 26 : 22),
+        x: labelX, y: labelY,
         class: "station-label",
-        "text-anchor": "middle",
+        "text-anchor": labelAnchor,
         "data-key": st.key
       });
       label.textContent = st.name;
