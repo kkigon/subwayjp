@@ -102,8 +102,8 @@ language sql stable security definer set search_path = '' as $$
         else 30 * (c.participant_count - c.score_rank)::numeric / (c.participant_count - 1) end)::numeric, 1) as percentile_bonus
     from calculated c
   ), ordered as (
-    select row_number() over (
-      order by (s.record_points + s.percentile_bonus) desc, s.best_score desc, s.user_id
+    select rank() over (
+      order by (s.record_points + s.percentile_bonus) desc
     )::bigint as final_rank, s.*
     from scored s
   )
@@ -115,7 +115,7 @@ language sql stable security definer set search_path = '' as $$
   from ordered o
   left join public.jp_profiles pr on pr.id = o.user_id
   where o.final_rank <= least(greatest(coalesce(p_limit, 100), 1), 100)
-  order by o.final_rank;
+  order by o.final_rank, o.best_score desc, o.user_id;
 $$;
 
 revoke all on function public.jp_all_time_ranking_by_duration(text, integer, integer) from public;

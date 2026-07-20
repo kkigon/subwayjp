@@ -82,3 +82,20 @@ test("frontend only reads and mutates Japan-prefixed database objects", () => {
 test("custom single-player records are excluded from the all-lines ranking", () => {
   assert.match(read("js/account-ui.js"), /mode !== "all"/);
 });
+
+test("ranking uses shared ranks for equal adjusted scores", () => {
+  const sql = read("supabase/core.sql");
+  assert.match(sql, /rank\(\)\s+over\s*\(\s*order by\s*\(s\.record_points \+ s\.percentile_bonus\)\s+desc\s*\)/i);
+  assert.doesNotMatch(sql, /row_number\(\)\s+over\s*\([\s\S]*?as final_rank/i);
+});
+
+test("SQ-only developer answer has a hidden corner UI and is refreshed per question", () => {
+  const html = read("index.html");
+  const game = read("js/game.js");
+  const css = read("css/style.css");
+  assert.match(html, /id="developer-answer"[^>]*aria-hidden="true"/);
+  assert.match(game, /developerAnswerRomaji\(profile, station\.name\)/);
+  assert.match(game, /function updateDeveloperAnswer\(\)/);
+  assert.match(game, /function clearDeveloperAnswer\(\)/);
+  assert.match(css, /\.developer-answer\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?color:\s*#d40000;/);
+});

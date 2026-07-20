@@ -34,3 +34,12 @@ test("hint reveals odd-position kana only", () => {
   assert.equal(call('kanaHint("東京")'), "と？き？う");
   assert.equal(call('kanaHint("新橋")'), "し？ば？");
 });
+
+test("developer answer exposes canonical romaji only to the exact SQ nickname", () => {
+  assert.equal(call('stationRomaji("大手町")'), "ootemachi");
+  assert.equal(call('developerAnswerRomaji({ nickname: "SQ" }, "大手町")'), "ootemachi");
+  assert.equal(call('developerAnswerRomaji({ nickname: "sq" }, "大手町")'), "");
+  assert.equal(call('developerAnswerRomaji({ nickname: "SQ " }, "大手町")'), "");
+  assert.equal(call('developerAnswerRomaji({ nickname: "他の人" }, "大手町")'), "");
+  assert.equal(call('developerAnswerRomaji(null, "大手町")'), "");
+});

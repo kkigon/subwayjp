@@ -109,6 +109,32 @@ function configureAnswerModeUI() {
   input.setAttribute("aria-label", "駅名を入力");
 }
 
+function clearDeveloperAnswer() {
+  const element = $("#developer-answer");
+  if (!element) return;
+  element.textContent = "";
+  element.classList.remove("show");
+  element.setAttribute("aria-hidden", "true");
+}
+
+function updateDeveloperAnswer() {
+  const element = $("#developer-answer");
+  const station = State.network?.stations?.get(State.current);
+  const profile = typeof Account !== "undefined" && Account.getProfile
+    ? Account.getProfile()
+    : null;
+  const answer = element && State.playing && station
+    ? developerAnswerRomaji(profile, station.name)
+    : "";
+  if (!element || !answer) {
+    clearDeveloperAnswer();
+    return;
+  }
+  element.textContent = answer;
+  element.classList.add("show");
+  element.setAttribute("aria-hidden", "false");
+}
+
 function regionMapOptions(displayLineIds = regionLineIds()) {
   return {
     displayLineIds,
@@ -161,6 +187,8 @@ function buildHomeLineBadges() {
 function startGame() {
   const ids = selectedLineIds();
   if (ids.length === 0) return;
+
+  clearDeveloperAnswer();
 
   State.network = buildNetwork(ids, regionMapOptions());
   SubwayMap.render(State.network);
@@ -217,6 +245,7 @@ function shuffle(arr) {
    모든 참가자가 같은 config로 호출 → 같은 문제를 같은 순서로 본다.
 ------------------------------------------------------ */
 function startVersusGame(config) {
+  clearDeveloperAnswer();
   State.region = "tokyo";
   State.mode = config.mode === "custom" ? "custom" : "all";
   State.customLines = new Set(State.mode === "custom" ? (config.lineIds || []) : []);
@@ -405,6 +434,7 @@ function endVersusFromState(snap) {
 
   State.playing = false;
   State.versus = false;
+  clearDeveloperAnswer();
   cancelAnimationFrame(State.timerFrame);
   SubwayMap.setInteractive(false); SubwayMap.hideFocus(); SubwayMap.fitAll();
   document.body.classList.remove("in-game", "versus-mode");
@@ -437,6 +467,7 @@ function renderCurrentQuestion() {
   State.hintUsedCurrent = false;
   $("#hint-display").classList.remove("show");
   clearSuggestions();
+  updateDeveloperAnswer();
 }
 
 // 대전용 문제 순서 생성(방장이 호출)
@@ -537,6 +568,7 @@ function nextQuestion() {
   State.hintUsedCurrent = false;
   $("#btn-hint").disabled = State.hintsLeft <= 0;
   clearSuggestions();
+  updateDeveloperAnswer();
   input.focus();
 }
 
@@ -662,6 +694,7 @@ function clearSuggestions() {
 /* ---------------- 종료 & 공유 (싱글플레이 전용; 대전은 endVersusFromState) ---------------- */
 function endGame() {
   State.playing = false;
+  clearDeveloperAnswer();
   cancelAnimationFrame(State.timerFrame);
   const qb = $("#vs-qtimer"); if (qb) qb.classList.remove("show");
   SubwayMap.setInteractive(false);
@@ -772,6 +805,7 @@ function goHome() {
   State.playing = false;
   State.studying = false;
   State.versus = false;
+  clearDeveloperAnswer();
   const homePlayMode = document.querySelector('input[name="playmode"]:checked')?.value;
   const homeMode = document.querySelector('input[name="mode"]:checked')?.value;
   State.region = "tokyo";
@@ -792,6 +826,7 @@ function goHome() {
 function startStudy() {
   State.playing = false;
   State.studying = true;
+  clearDeveloperAnswer();
   cancelAnimationFrame(State.timerFrame);
 
   // 전체 노선 + 모든 역을 표시

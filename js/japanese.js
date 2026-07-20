@@ -150,6 +150,16 @@ function stationReading(displayName) {
   return stationMeta(displayName)?.kana || katakanaToHiragana(displayName);
 }
 
+function stationRomaji(displayName) {
+  return kanaToRomaji(stationReading(displayName));
+}
+
+// 開発者SQだけに、現在の正解をローマ字で表示するための厳密な判定。
+function developerAnswerRomaji(profile, displayName) {
+  if (profile?.nickname !== "SQ") return "";
+  return stationRomaji(displayName);
+}
+
 function stationNumbers(displayName) {
   return stationMeta(displayName)?.numbers || [];
 }
