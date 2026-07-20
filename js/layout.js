@@ -2,7 +2,7 @@
    路線図レイアウト
    - 主要駅を共有グリッドに固定し、その間を補間
    - 同じキーの駅は全路線で同じ座標を共有
-   - 主要駅間の中間駅は同じ直線上に配置
+   - 主要駅間は長い水平・垂直・45度区間として配置
    ============================================================ */
 
 function stationDisplayName(key) {
@@ -20,9 +20,64 @@ function stationDisplayName(key) {
    ------------------------------------------------------------ */
 const ROUTE_VIA = {};
 
+function octilinearBend(a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const adx = Math.abs(dx), ady = Math.abs(dy);
+  if (adx < 0.5 || ady < 0.5 || Math.abs(adx - ady) < 0.5) return null;
+  const sx = Math.sign(dx), sy = Math.sign(dy);
+  return adx > ady
+    ? [a[0] + sx * (adx - ady), a[1]]
+    : [a[0], a[1] + sy * (ady - adx)];
+}
+
+function pointOnSegment(a, b, t) {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+}
+
+// 主要駅同士を駅ごとの細かい折れ線にせず、区間全体で最大1回だけ曲げる。
+// 中間駅があれば曲がり角をその駅に割り当て、長い0/45/90度の線を作る。
+function layoutAnchorSpan(pts, keys, i0, i1, edgeVias) {
+  const p0 = pts[i0], p1 = pts[i1];
+  const intervals = i1 - i0;
+  const bend = octilinearBend(p0, p1);
+
+  if (!bend) {
+    for (let i = i0 + 1; i < i1; i++) {
+      pts[i] = pointOnSegment(p0, p1, (i - i0) / intervals);
+    }
+    return;
+  }
+
+  if (intervals === 1) {
+    const edgeKey = [keys[i0], keys[i1]].sort().join("||");
+    edgeVias.set(edgeKey, { from: keys[i0], points: [bend] });
+    return;
+  }
+
+  const firstLength = Math.hypot(bend[0] - p0[0], bend[1] - p0[1]);
+  const secondLength = Math.hypot(p1[0] - bend[0], p1[1] - bend[1]);
+  const bendOffset = Math.max(1, Math.min(
+    intervals - 1,
+    Math.round(intervals * firstLength / (firstLength + secondLength))
+  ));
+  pts[i0 + bendOffset] = bend;
+
+  for (let offset = 1; offset < bendOffset; offset++) {
+    pts[i0 + offset] = pointOnSegment(p0, bend, offset / bendOffset);
+  }
+  for (let offset = bendOffset + 1; offset < intervals; offset++) {
+    pts[i0 + offset] = pointOnSegment(
+      bend,
+      p1,
+      (offset - bendOffset) / (intervals - bendOffset)
+    );
+  }
+}
+
 // 한 세그먼트(역 키 배열)의 좌표 배열 계산
 function layoutSegment(keys) {
   const pts = new Array(keys.length).fill(null);
+  const edgeVias = new Map();
   keys.forEach((k, i) => { if (ANCHORS[k]) pts[i] = [...ANCHORS[k]]; });
 
   const anchorIdx = [];
@@ -30,7 +85,7 @@ function layoutSegment(keys) {
 
   if (anchorIdx.length === 0) {
     // 앵커가 전혀 없으면 (이론상 없음) 한 줄로 나열
-    return keys.map((_, i) => [100 + i * 30, 100]);
+    return { points: keys.map((_, i) => [100 + i * 56, 100]), edgeVias };
   }
 
   // 첫 앵커 이전 구간: 첫 두 앵커 방향으로 역방향 외삽
@@ -39,10 +94,10 @@ function layoutSegment(keys) {
     const a = pts[anchorIdx[0]];
     const b = pts[anchorIdx[1] ?? anchorIdx[0]] || a;
     const dx = (b[0] - a[0]) || 20, dy = (b[1] - a[1]) || 0;
-    const len = Math.hypot(dx, dy) || 1;
     for (let i = 0; i < first; i++) {
-      const d = (first - i) * 38;
-      pts[i] = [a[0] - dx / len * d, a[1] - dy / len * d];
+      const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+      const d = (first - i) * 56;
+      pts[i] = [a[0] - Math.cos(angle) * d, a[1] - Math.sin(angle) * d];
     }
   }
   // 마지막 앵커 이후 구간: 외삽
@@ -51,22 +106,18 @@ function layoutSegment(keys) {
     const a = pts[last];
     const b = pts[anchorIdx[anchorIdx.length - 2] ?? last] || a;
     const dx = (a[0] - b[0]) || 20, dy = (a[1] - b[1]) || 0;
-    const len = Math.hypot(dx, dy) || 1;
     for (let i = last + 1; i < keys.length; i++) {
-      const d = (i - last) * 38;
-      pts[i] = [a[0] + dx / len * d, a[1] + dy / len * d];
+      const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+      const d = (i - last) * 56;
+      pts[i] = [a[0] + Math.cos(angle) * d, a[1] + Math.sin(angle) * d];
     }
   }
   // 앵커 사이 보간
   for (let a = 0; a < anchorIdx.length - 1; a++) {
     const i0 = anchorIdx[a], i1 = anchorIdx[a + 1];
-    const p0 = pts[i0], p1 = pts[i1];
-    for (let i = i0 + 1; i < i1; i++) {
-      const t = (i - i0) / (i1 - i0);
-      pts[i] = [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t];
-    }
+    layoutAnchorSpan(pts, keys, i0, i1, edgeVias);
   }
-  return pts;
+  return { points: pts, edgeVias };
 }
 
 /**
@@ -82,6 +133,7 @@ function layoutSegment(keys) {
 function buildNetwork(lineIds, options = {}) {
   const stations = new Map();
   const paths = [];
+  const autoRouteVia = new Map();
 
   // lineIds: 실제 게임 출제 대상 노선
   // displayLineIds: 화면에 표시할 노선
@@ -94,7 +146,9 @@ function buildNetwork(lineIds, options = {}) {
     const isActiveLine = activeSet.has(line.id);
 
     for (const seg of line.segments) {
-      let pts = layoutSegment(seg);
+      const layout = layoutSegment(seg);
+      const pts = layout.points;
+      for (const [key, route] of layout.edgeVias) autoRouteVia.set(key, route);
       // 노선은 항상 원래 색으로 그릴 것이므로 active 정보는 필요 없음
       paths.push({ line, points: pts });
 
@@ -163,7 +217,7 @@ function buildNetwork(lineIds, options = {}) {
       lines: e.lines.slice().sort((x, y) => lineOrder.get(x) - lineOrder.get(y))
     };
     // 특정 구간은 곡선 우회 경로(via)를 부여해 다른 노선과 겹치지 않게 한다.
-    const route = ROUTE_VIA[k];
+    const route = ROUTE_VIA[k] || autoRouteVia.get(k);
     if (route && options.regionLayout !== "nationwide") {
       // route.lines가 있으면 해당 노선이 이 구간에 포함될 때만 적용
       const applies = !route.lines || route.lines.some(id => out.lines.includes(id));

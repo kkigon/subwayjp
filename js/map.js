@@ -125,6 +125,60 @@ const SubwayMap = (() => {
     if (svg) svg.parentElement.classList.toggle("interactive", on);
   }
 
+  function labelBox(x, y, anchor, width) {
+    const left = anchor === "start" ? x : anchor === "end" ? x - width : x - width / 2;
+    return { left, right: left + width, top: y - 13, bottom: y + 4 };
+  }
+
+  function overlapArea(a, b, pad = 3) {
+    const w = Math.min(a.right, b.right) - Math.max(a.left, b.left) + pad;
+    const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) + pad;
+    return w > 0 && h > 0 ? w * h : 0;
+  }
+
+  // 長い日本語駅名が密集する都心部では固定方向だけでは重なるため、
+  // 8方向の候補から既に配置したラベル・他駅との衝突が最少の位置を選ぶ。
+  function chooseLabelPlacement(st, stations, occupied) {
+    const seed = [...st.key].reduce((sum, char) => sum + char.codePointAt(0), 0);
+    const width = Math.max(28, [...st.name].length * 13.2);
+    const horizontalFirst = seed % 2 === 0;
+    const candidates = [
+      { dx: 0, dy: -15, anchor: "middle" },
+      { dx: 0, dy: 27, anchor: "middle" },
+      { dx: 16, dy: 5, anchor: "start" },
+      { dx: -16, dy: 5, anchor: "end" },
+      { dx: 13, dy: -12, anchor: "start" },
+      { dx: -13, dy: -12, anchor: "end" },
+      { dx: 13, dy: 22, anchor: "start" },
+      { dx: -13, dy: 22, anchor: "end" },
+    ];
+    if (horizontalFirst) candidates.push(...candidates.splice(0, 2));
+    if (seed % 4 >= 2) candidates.reverse();
+
+    let best = null;
+    candidates.forEach((candidate, index) => {
+      const x = st.x + candidate.dx;
+      const y = st.y + candidate.dy;
+      const box = labelBox(x, y, candidate.anchor, width);
+      let score = index * 2;
+
+      for (const previous of occupied) {
+        const area = overlapArea(box, previous);
+        if (area) score += 1200 + area * 5;
+      }
+      for (const other of stations) {
+        if (other === st) continue;
+        if (other.x >= box.left - 8 && other.x <= box.right + 8 &&
+            other.y >= box.top - 8 && other.y <= box.bottom + 8) {
+          score += other.lines.length > 1 ? 700 : 260;
+        }
+      }
+
+      if (!best || score < best.score) best = { ...candidate, x, y, box, score };
+    });
+    return best;
+  }
+
   function render(net) {
     network = net;
     gLines.innerHTML = "";
@@ -199,8 +253,10 @@ const SubwayMap = (() => {
       }
     }
 
-    // 역 + 이름 라벨
-    for (const st of net.stations.values()) {
+    const stations = [...net.stations.values()];
+
+    // 역 표시를 먼저 그린 뒤, 라벨은 충돌을 계산해 별도로 배치한다.
+    for (const st of stations) {
       const isTransfer = st.lines.length > 1;
       const color = lineById(st.lines[0]).color;
       const c = el("circle", {
@@ -213,24 +269,19 @@ const SubwayMap = (() => {
         "data-key": st.key
       });
       gStations.appendChild(c);
+    }
 
-      // ラベルを全駅で同じ下側に置くと都心部で重なるため、駅名から作る
-      // 安定した方向値で上下左右へ分散する。再描画しても位置は変わらない。
-      const labelSeed = [...st.key].reduce((sum, char) => sum + char.codePointAt(0), 0);
-      let labelX = st.x, labelY = st.y + 22, labelAnchor = "middle";
-      if (isTransfer) {
-        const directions = [
-          [16, 5, "start"], [-16, 5, "end"], [0, -15, "middle"], [0, 28, "middle"],
-        ];
-        const [dx, dy, anchor] = directions[labelSeed % directions.length];
-        labelX += dx; labelY = st.y + dy; labelAnchor = anchor;
-      } else if (labelSeed % 2 === 0) {
-        labelY = st.y - 11;
-      }
+    const occupied = [];
+    const labelOrder = stations.slice().sort((a, b) =>
+      b.lines.length - a.lines.length || [...b.name].length - [...a.name].length
+    );
+    for (const st of labelOrder) {
+      const placement = chooseLabelPlacement(st, stations, occupied);
+      occupied.push(placement.box);
       const label = el("text", {
-        x: labelX, y: labelY,
+        x: placement.x, y: placement.y,
         class: "station-label",
-        "text-anchor": labelAnchor,
+        "text-anchor": placement.anchor,
         "data-key": st.key
       });
       label.textContent = st.name;

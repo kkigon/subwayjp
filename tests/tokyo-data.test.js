@@ -48,20 +48,33 @@ test("the complete game network builds with finite map coordinates", () => {
   assert.equal(summary.finite, true);
 });
 
-test("schematic layout uses key anchors and straight station segments", () => {
+test("schematic layout uses long octilinear route sections", () => {
   const stationNames = new Set(lines.flatMap(line => line.segments.flat()));
   assert.ok(Object.keys(anchors).length >= 60);
   assert.ok(Object.keys(anchors).length < stationNames.size);
   const summary = vm.runInContext(`(() => {
     const network = buildNetwork(LINES.map(line => line.id));
-    const directEdges = network.edges.every(edge => !edge.via?.length);
+    const octilinear = network.edges.every(edge => {
+      const points = [[edge.ax, edge.ay], ...(edge.via || []), [edge.bx, edge.by]];
+      return points.slice(1).every((point, index) => {
+        const previous = points[index];
+        const dx = Math.abs(point[0] - previous[0]);
+        const dy = Math.abs(point[1] - previous[1]);
+        return dx < 0.001 || dy < 0.001 || Math.abs(dx - dy) < 0.001;
+      });
+    });
+    const bentEdges = network.edges.filter(edge => edge.via?.length).length;
     const stationDistances = network.edges.map(edge => Math.hypot(edge.bx - edge.ax, edge.by - edge.ay));
     return {
-      directEdges,
+      octilinear,
+      bentEdgeRatio: bentEdges / network.edges.length,
+      minimumStationDistance: Math.min(...stationDistances),
       averageStationDistance: stationDistances.reduce((sum, value) => sum + value, 0) / stationDistances.length,
     };
   })()`, context);
-  assert.equal(summary.directEdges, true);
+  assert.equal(summary.octilinear, true);
+  assert.ok(summary.bentEdgeRatio < 0.18);
+  assert.ok(summary.minimumStationDistance >= 45);
   assert.ok(summary.averageStationDistance >= 45);
 });
 
